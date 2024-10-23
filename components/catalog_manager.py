@@ -8,12 +8,14 @@ from services.catalog_service import CatalogService
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 def validate_price(price):
-    """Validate price value"""
     try:
-        # Convert to float and ensure it's positive
-        price_value = float(str(price).replace(',', '.'))
+        # Handle string inputs that might have commas
+        if isinstance(price, str):
+            price = price.replace(',', '.')
+        # Convert to float and check if positive
+        price_value = float(price)
         return price_value >= 0
-    except:
+    except (ValueError, TypeError):
         return False
 
 def generate_file_hash(df):
