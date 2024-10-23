@@ -18,10 +18,6 @@ def validate_price(price):
     except (ValueError, TypeError):
         return False
 
-def generate_file_hash(df):
-    """Generate a unique hash for the dataframe content"""
-    return hashlib.md5(str(df.values.tobytes()).encode()).hexdigest()
-
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
 def import_catalog_data(df):
     """Import catalog data with retry logic"""
@@ -30,13 +26,9 @@ def import_catalog_data(df):
 def render_catalog_manager():
     st.header("Catalog Management")
     
-    # Initialize session state for mapping
-    if 'mapping_state' not in st.session_state:
-        st.session_state.mapping_state = {}
-    
-    # Initialize session state for file hash
-    if 'current_file_hash' not in st.session_state:
-        st.session_state.current_file_hash = None
+    # Initialize mapping state at the top level
+    if 'mappings' not in st.session_state:
+        st.session_state.mappings = {}
     
     # Show example file formats
     example_format = st.radio("View Example Format", ["CSV", "Excel"])
@@ -68,82 +60,66 @@ def render_catalog_manager():
             # Show raw data preview
             st.subheader("Raw Data Preview")
             if file_type == 'csv':
-                preview_df = pd.read_csv(uploaded_file, nrows=20, encoding_errors='replace')
+                preview_df = pd.read_csv(uploaded_file, nrows=20)
             else:
                 preview_df = pd.read_excel(uploaded_file, nrows=20)
             st.dataframe(preview_df)
-            
-            # Generate hash for current file
-            current_file_hash = generate_file_hash(preview_df)
-            
-            # Only reset mapping state if a new file is uploaded
-            if st.session_state.current_file_hash != current_file_hash:
-                st.session_state.current_file_hash = current_file_hash
-                st.session_state.mapping_state = {}
             
             # Row selection
             header_row = st.number_input("Select Header Row Number", min_value=1, value=1)
             start_row = st.number_input("Start Reading Data from Row", min_value=header_row+1, value=header_row+1)
             
-            # Read file with selected rows
-            uploaded_file.seek(0)
-            with st.spinner("Processing file..."):
-                if file_type == 'csv':
-                    df = pd.read_csv(uploaded_file, header=header_row-1, skiprows=list(range(1, start_row)))
-                else:
-                    df = pd.read_excel(uploaded_file, header=header_row-1, skiprows=list(range(1, start_row)))
-            
-            # Column mapping section
+            # Column mapping interface
             st.subheader("Map Required Columns")
-            available_columns = df.columns.tolist()
+            available_columns = preview_df.columns.tolist()
             required_columns = ['article_code', 'barcode', 'brand', 'description', 'price']
             
             # Reset mapping button
             if st.button("🔄 Reset Mappings", help="Clear all column mappings"):
-                st.session_state.mapping_state = {}
+                st.session_state.mappings = {}
                 st.warning("Column mappings have been reset.")
             
-            st.info("💡 Your column mapping will be preserved until you reset it or upload a different file.")
+            st.info("💡 Your column mapping will be preserved until you reset it.")
             
-            # Create mapping interface with two columns
+            # Create mapping interface
             col1, col2 = st.columns(2)
-            
-            # Store mappings temporarily to apply all at once
-            new_mappings = {}
-            
             for idx, required_col in enumerate(required_columns):
                 with col1 if idx % 2 == 0 else col2:
-                    # Get current mapping for this column
-                    current_mapping = st.session_state.mapping_state.get(required_col, '')
+                    mapping_key = f"mapping_{required_col}"
+                    current_value = st.session_state.mappings.get(mapping_key, '')
                     
-                    # Create selectbox with current mapping as default
                     selected = st.selectbox(
                         f"Map {required_col} to:",
                         options=[''] + available_columns,
-                        index=available_columns.index(current_mapping) + 1 if current_mapping in available_columns else 0,
-                        key=f'select_{required_col}_{current_file_hash}'  # Use file hash in key to ensure uniqueness
+                        index=available_columns.index(current_value) + 1 if current_value in available_columns else 0,
+                        key=mapping_key
                     )
                     
-                    # Store the new mapping
-                    new_mappings[required_col] = selected
+                    # Update mapping immediately
+                    st.session_state.mappings[mapping_key] = selected
                     
                     # Show preview if mapped
                     if selected:
                         st.success(f"✓ {required_col} mapped to {selected}")
                         with st.expander(f"Preview {required_col}"):
-                            st.dataframe(df[selected].head())
+                            st.dataframe(preview_df[selected].head())
                     else:
                         st.error(f"✗ {required_col} not mapped")
             
-            # Update session state with all new mappings at once
-            st.session_state.mapping_state.update(new_mappings)
-            
             # Show import section when all fields are mapped
             st.markdown("---")
-            all_mapped = all(st.session_state.mapping_state.get(col, '') for col in required_columns)
+            all_mapped = all(st.session_state.mappings.get(f"mapping_{col}", '') for col in required_columns)
             
             if all_mapped:
                 st.success("✅ All required columns are mapped!")
+                
+                # Read full file with selected rows for import
+                uploaded_file.seek(0)
+                with st.spinner("Processing file..."):
+                    if file_type == 'csv':
+                        df = pd.read_csv(uploaded_file, header=header_row-1, skiprows=list(range(1, start_row)))
+                    else:
+                        df = pd.read_excel(uploaded_file, header=header_row-1, skiprows=list(range(1, start_row)))
                 
                 # Centered import button
                 col1, col2, col3 = st.columns([1,2,1])
@@ -151,8 +127,11 @@ def render_catalog_manager():
                     if st.button("🔄 Import Data", use_container_width=True):
                         with st.spinner('Processing and importing data...'):
                             try:
-                                # Create reverse mapping
-                                reverse_mapping = {v: k for k, v in st.session_state.mapping_state.items() if v}
+                                # Create reverse mapping from session state
+                                reverse_mapping = {
+                                    v: k.replace('mapping_', '') 
+                                    for k, v in st.session_state.mappings.items() if v
+                                }
                                 mapped_df = df.rename(columns=reverse_mapping)
                                 
                                 # Validate data
@@ -171,52 +150,25 @@ def render_catalog_manager():
                                 })
                                 st.dataframe(validation_df)
                                 
-                                # Create detailed import report
-                                import_report = pd.DataFrame({
-                                    'row': range(len(mapped_df)),
-                                    'status': 'Invalid',
-                                    'reason': 'Unknown'
-                                })
-                                
-                                # Update status for each validation
-                                import_report.loc[~valid_barcodes, 'reason'] = 'Invalid barcode'
-                                import_report.loc[~valid_articles, 'reason'] = 'Invalid article code'
-                                import_report.loc[~valid_prices, 'reason'] = 'Invalid price (must be a positive number)'
-                                
-                                # Process valid records
+                                # Create import report
                                 valid_mask = valid_barcodes & valid_articles & valid_prices
                                 valid_df = mapped_df[valid_mask].copy()
                                 
                                 if len(valid_df) > 0:
                                     success, message = import_catalog_data(valid_df)
                                     if success:
-                                        import_report.loc[valid_mask, 'status'] = 'Imported'
                                         st.success(f"✅ Successfully imported {len(valid_df)} records")
                                     else:
                                         st.error(f"❌ Import failed: {message}")
                                 else:
                                     st.warning("⚠️ No valid records to import")
                                 
-                                # Show import report
-                                st.subheader("Import Report")
-                                st.write(f"Successfully imported {valid_mask.sum()} out of {len(mapped_df)} records")
-                                st.dataframe(import_report)
-                                
-                                # Download report option
-                                csv = import_report.to_csv(index=False)
-                                st.download_button(
-                                    "📥 Download Import Report",
-                                    csv,
-                                    "import_report.csv",
-                                    "text/csv",
-                                    help="Download detailed import results"
-                                )
-                                
                             except Exception as e:
                                 st.error(f"❌ Error during import: {str(e)}")
                                 st.info("💡 Please try again or contact support if the issue persists")
             else:
-                unmapped = [col for col, val in st.session_state.mapping_state.items() if not val]
+                unmapped = [col for col in required_columns 
+                           if not st.session_state.mappings.get(f"mapping_{col}", '')]
                 st.warning(f"⚠️ Please map the following columns to proceed: {', '.join(unmapped)}")
                 
         except Exception as e:
