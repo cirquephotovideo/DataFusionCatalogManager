@@ -9,8 +9,14 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 
 def validate_price(price):
     try:
-        # Convert to float directly
-        return float(str(price).replace(',', '.').strip()) >= 0
+        # Convert to float directly without any isdigit checks
+        if isinstance(price, (int, float)):
+            return float(price) >= 0
+        if isinstance(price, str):
+            # Clean string and convert to float
+            clean_price = str(price).strip()
+            return float(clean_price) >= 0
+        return False
     except (ValueError, TypeError):
         return False
 
@@ -153,7 +159,7 @@ def render_catalog_manager():
                                 if len(valid_df) > 0:
                                     # Convert prices to float
                                     valid_df['price'] = valid_df['price'].apply(
-                                        lambda x: float(str(x).replace(',', '.').strip())
+                                        lambda x: float(x) if isinstance(x, (int, float)) else float(str(x).strip())
                                     )
                                     success, message = import_catalog_data(valid_df)
                                     if success:
