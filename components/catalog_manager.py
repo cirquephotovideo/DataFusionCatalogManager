@@ -53,9 +53,9 @@ def render_catalog_manager():
                 
                 # Re-read file with selected rows
                 if file_type == 'csv':
-                    df = pd.read_csv(uploaded_file, header=header_row-1, skiprows=range(1, start_row))
+                    df = pd.read_csv(uploaded_file, header=header_row-1, skiprows=list(range(1, start_row)))
                 else:
-                    df = pd.read_excel(uploaded_file, header=header_row-1, skiprows=range(1, start_row))
+                    df = pd.read_excel(uploaded_file, header=header_row-1, skiprows=list(range(1, start_row)))
                 
                 # 3. Show column mapping interface
                 st.subheader("Map Required Columns")
@@ -63,59 +63,82 @@ def render_catalog_manager():
                 mapping = {}
                 required_columns = ['article_code', 'barcode', 'brand', 'description', 'price']
                 
-                for required_col in required_columns:
-                    mapping[required_col] = st.selectbox(
-                        f"Map {required_col} to:",
-                        options=[''] + available_columns,
-                        key=f"map_{required_col}"
-                    )
+                # Reset mapping button
+                if st.button("Reset Mapping"):
+                    for col in required_columns:
+                        if f"map_{col}_{header_row}_{start_row}" in st.session_state:
+                            del st.session_state[f"map_{col}_{header_row}_{start_row}"]
+                
+                # Create columns for better layout
+                col1, col2 = st.columns(2)
+                for idx, required_col in enumerate(required_columns):
+                    # Alternate between columns
+                    with col1 if idx % 2 == 0 else col2:
+                        mapping[required_col] = st.selectbox(
+                            f"Map {required_col} to:",
+                            options=[''] + available_columns,
+                            key=f"map_{required_col}_{header_row}_{start_row}"
+                        )
+                        
+                        # Show validation status and preview
+                        if mapping[required_col]:
+                            st.success(f"✓ {required_col} mapped")
+                            st.write(f"Preview of {required_col}:")
+                            st.dataframe(df[mapping[required_col]].head(3))
+                        else:
+                            st.error(f"✗ {required_col} not mapped")
                 
                 # Only proceed if user has mapped all required columns
-                if st.button("Apply Mapping") and all(mapping.values()):
-                    # Create reverse mapping and process
-                    reverse_mapping = {v: k for k, v in mapping.items()}
-                    df = df.rename(columns=reverse_mapping)
+                if all(mapping.values()):
+                    st.success("All required columns are mapped!")
                     
-                    # Display preview of mapped data
-                    st.subheader("Data Preview (After Mapping)")
-                    preview_rows = min(10, len(df))
-                    st.dataframe(df.head(preview_rows))
-                    
-                    # Data validation
-                    st.subheader("Data Validation")
-                    valid_barcodes = df['barcode'].apply(validate_ean13)
-                    valid_articles = df['article_code'].apply(validate_article_code)
-                    
-                    validation_status = pd.DataFrame({
-                        'Total Records': [len(df)],
-                        'Valid Barcodes': [valid_barcodes.sum()],
-                        'Valid Article Codes': [valid_articles.sum()],
-                        'Invalid Records': [len(df) - min(valid_barcodes.sum(), valid_articles.sum())]
-                    })
-                    st.dataframe(validation_status)
-                    
-                    # Display summary
-                    summary = prepare_catalog_summary(df)
-                    st.subheader("Catalog Summary")
-                    col1, col2, col3 = st.columns(3)
-                    col1.metric("Total Records", summary['total_records'])
-                    col2.metric("Unique Brands", summary['unique_brands'])
-                    col3.metric("Valid Barcodes", summary['valid_barcodes'])
-                    
-                    # Import option
-                    if st.button("Import Valid Records"):
-                        # Filter out invalid records
-                        valid_mask = valid_barcodes & valid_articles
-                        valid_df = df[valid_mask]
+                    if st.button("Apply Mapping"):
+                        # Create reverse mapping and process
+                        reverse_mapping = {v: k for k, v in mapping.items()}
+                        df = df.rename(columns=reverse_mapping)
                         
-                        if len(valid_df) > 0:
-                            success, message = CatalogService.add_catalog_entries(valid_df)
-                            if success:
-                                st.success(f"Successfully imported {len(valid_df)} records")
+                        # Display preview of mapped data
+                        st.subheader("Data Preview (After Mapping)")
+                        preview_rows = min(10, len(df))
+                        st.dataframe(df.head(preview_rows))
+                        
+                        # Data validation
+                        st.subheader("Data Validation")
+                        valid_barcodes = df['barcode'].apply(validate_ean13)
+                        valid_articles = df['article_code'].apply(validate_article_code)
+                        
+                        validation_status = pd.DataFrame({
+                            'Total Records': [len(df)],
+                            'Valid Barcodes': [valid_barcodes.sum()],
+                            'Valid Article Codes': [valid_articles.sum()],
+                            'Invalid Records': [len(df) - min(valid_barcodes.sum(), valid_articles.sum())]
+                        })
+                        st.dataframe(validation_status)
+                        
+                        # Display summary
+                        summary = prepare_catalog_summary(df)
+                        st.subheader("Catalog Summary")
+                        col1, col2, col3 = st.columns(3)
+                        col1.metric("Total Records", summary['total_records'])
+                        col2.metric("Unique Brands", summary['unique_brands'])
+                        col3.metric("Valid Barcodes", summary['valid_barcodes'])
+                        
+                        # Import option
+                        if st.button("Import Valid Records"):
+                            # Filter out invalid records
+                            valid_mask = valid_barcodes & valid_articles
+                            valid_df = df[valid_mask]
+                            
+                            if len(valid_df) > 0:
+                                success, message = CatalogService.add_catalog_entries(valid_df)
+                                if success:
+                                    st.success(f"Successfully imported {len(valid_df)} records")
+                                else:
+                                    st.error(message)
                             else:
-                                st.error(message)
-                        else:
-                            st.warning("No valid records to import")
+                                st.warning("No valid records to import")
+                else:
+                    st.warning("Please map all required columns before proceeding")
                             
         except Exception as e:
             st.error(f"Error processing file: {str(e)}")
