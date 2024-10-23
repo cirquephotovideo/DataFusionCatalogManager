@@ -51,113 +51,111 @@ def render_catalog_manager():
             # Generate unique hash for the file content
             file_hash = generate_file_hash(preview_df)
             
-            # Initialize top-level mapping state
-            if 'file_hash' not in st.session_state:
-                st.session_state['file_hash'] = file_hash
-            if 'column_mappings' not in st.session_state:
-                st.session_state['column_mappings'] = {}
-            if file_hash not in st.session_state['column_mappings']:
-                st.session_state['column_mappings'][file_hash] = {}
-            
-            # Store mappings in a dedicated state variable
-            mappings = st.session_state['column_mappings'][file_hash]
+            # Initialize mappings in session state if not exists
+            if 'mappings' not in st.session_state:
+                st.session_state.mappings = {}
             
             # 2. Row selection
             header_row = st.number_input("Select Header Row Number", min_value=1, value=1)
             start_row = st.number_input("Start Reading Data from Row", min_value=header_row+1, value=header_row+1)
             
-            if st.button("Confirm Row Selection"):
-                # Reset file pointer
-                uploaded_file.seek(0)
-                
-                # Re-read file with selected rows
-                if file_type == 'csv':
-                    df = pd.read_csv(uploaded_file, header=header_row-1, skiprows=list(range(1, start_row)))
-                else:
-                    df = pd.read_excel(uploaded_file, header=header_row-1, skiprows=list(range(1, start_row)))
-                
-                # 3. Show column mapping interface
-                st.subheader("Map Required Columns")
-                available_columns = df.columns.tolist()
-                required_columns = ['article_code', 'barcode', 'brand', 'description', 'price']
-                
-                # Reset mapping button
-                if st.button("Reset Mapping", key="reset_mapping"):
-                    st.session_state['column_mappings'][file_hash] = {}
-                    mappings = {}
-                    st.warning("Column mapping has been reset.")
-                    st.experimental_rerun()
-                
-                st.info("💡 Your column mapping will be preserved until you reset it or upload a different file.")
-                
-                # Create mapping interface
-                col1, col2 = st.columns(2)
-                for idx, required_col in enumerate(required_columns):
-                    with col1 if idx % 2 == 0 else col2:
-                        # Use a unique key combining file hash and column
-                        mapping_key = f"{file_hash}_{required_col}"
-                        
-                        # Initialize selectbox with current value if it exists
-                        current_value = mappings.get(required_col, '')
-                        current_index = 0 if not current_value else available_columns.index(current_value) + 1
-                        
-                        selected_col = st.selectbox(
-                            f"Map {required_col} to:",
-                            options=[''] + available_columns,
-                            index=current_index,
-                            key=mapping_key
-                        )
-                        
-                        # Update mapping in session state immediately
-                        if selected_col:
-                            mappings[required_col] = selected_col
-                            st.success(f"✓ {required_col} mapped to {selected_col}")
-                            with st.expander(f"Preview {required_col} data"):
-                                st.dataframe(df[selected_col].head(3))
-                        else:
-                            if required_col in mappings:
-                                del mappings[required_col]
-                            st.error(f"✗ {required_col} not mapped")
-                
-                # Show import section when all fields are mapped
-                st.markdown("---")
-                all_mapped = all(required_col in mappings for required_col in required_columns)
-                if all_mapped:
-                    st.success("✅ All required columns are mapped!")
-                    if st.button("Import Data", key=f"import_button_{file_hash}"):
-                        # Process the import
-                        reverse_mapping = {v: k for k, v in mappings.items()}
-                        df = df.rename(columns=reverse_mapping)
-                        
-                        # Data validation
-                        valid_barcodes = df['barcode'].apply(validate_ean13)
-                        valid_articles = df['article_code'].apply(validate_article_code)
-                        
-                        # Show validation summary
-                        st.subheader("Data Validation")
-                        validation_df = pd.DataFrame({
-                            'Total Records': [len(df)],
-                            'Valid Barcodes': [valid_barcodes.sum()],
-                            'Valid Article Codes': [valid_articles.sum()],
-                            'Invalid Records': [len(df) - min(valid_barcodes.sum(), valid_articles.sum())]
-                        })
-                        st.dataframe(validation_df)
-                        
-                        # Filter and import valid records
-                        valid_mask = valid_barcodes & valid_articles
-                        valid_df = df[valid_mask]
-                        
-                        if len(valid_df) > 0:
-                            success, message = CatalogService.add_catalog_entries(valid_df)
-                            if success:
-                                st.success(f"Successfully imported {len(valid_df)} records")
-                            else:
-                                st.error(message)
-                        else:
-                            st.warning("No valid records to import")
-                else:
-                    unmapped = [col for col in required_columns if col not in mappings]
-                    st.warning(f"Please map the following columns to proceed: {', '.join(unmapped)}")
+            # Read file with selected rows
+            uploaded_file.seek(0)
+            if file_type == 'csv':
+                df = pd.read_csv(uploaded_file, header=header_row-1, skiprows=list(range(1, start_row)))
+            else:
+                df = pd.read_excel(uploaded_file, header=header_row-1, skiprows=list(range(1, start_row)))
+            
+            # 3. Show column mapping interface outside form
+            st.subheader("Map Required Columns")
+            available_columns = df.columns.tolist()
+            required_columns = ['article_code', 'barcode', 'brand', 'description', 'price']
+            
+            # Reset mapping button
+            if st.button("Reset Mapping"):
+                st.session_state.mappings = {}
+                st.info("Column mappings have been reset.")
+            
+            st.info("💡 Your column mapping will be preserved until you reset it or upload a different file.")
+            
+            # Create mapping interface with persistent state
+            col1, col2 = st.columns(2)
+            for idx, required_col in enumerate(required_columns):
+                with col1 if idx % 2 == 0 else col2:
+                    # Generate stable key for selectbox
+                    mapping_key = f"mapping_{required_col}_{file_hash}"
                     
+                    # Get current mapping if exists
+                    current_mapping = st.session_state.mappings.get(mapping_key, '')
+                    
+                    # Create selectbox with persistent state
+                    try:
+                        current_index = available_columns.index(current_mapping) + 1 if current_mapping in available_columns else 0
+                    except ValueError:
+                        current_index = 0
+                    
+                    selected_column = st.selectbox(
+                        f"Map {required_col} to:",
+                        options=[''] + available_columns,
+                        key=mapping_key,
+                        index=current_index
+                    )
+                    
+                    # Update mapping state
+                    if selected_column:
+                        st.session_state.mappings[mapping_key] = selected_column
+                        st.success(f"✓ {required_col} mapped to {selected_column}")
+                        with st.expander(f"Preview {required_col} data"):
+                            st.dataframe(df[selected_column].head())
+                    else:
+                        if mapping_key in st.session_state.mappings:
+                            del st.session_state.mappings[mapping_key]
+                        st.error(f"✗ {required_col} not mapped")
+            
+            # Show import section when all fields are mapped
+            st.markdown("---")
+            all_mapped = all(f"mapping_{col}_{file_hash}" in st.session_state.mappings 
+                           for col in required_columns)
+            
+            if all_mapped:
+                st.success("✅ All required columns are mapped!")
+                if st.button("Import Data", key=f"import_{file_hash}"):
+                    # Create reverse mapping
+                    mappings = {col: st.session_state.mappings[f"mapping_{col}_{file_hash}"] 
+                              for col in required_columns}
+                    reverse_mapping = {v: k for k, v in mappings.items()}
+                    df = df.rename(columns=reverse_mapping)
+                    
+                    # Data validation
+                    valid_barcodes = df['barcode'].apply(validate_ean13)
+                    valid_articles = df['article_code'].apply(validate_article_code)
+                    
+                    # Show validation summary
+                    st.subheader("Data Validation")
+                    validation_df = pd.DataFrame({
+                        'Total Records': [len(df)],
+                        'Valid Barcodes': [valid_barcodes.sum()],
+                        'Valid Article Codes': [valid_articles.sum()],
+                        'Invalid Records': [len(df) - min(valid_barcodes.sum(), valid_articles.sum())]
+                    })
+                    st.dataframe(validation_df)
+                    
+                    # Filter and import valid records
+                    valid_mask = valid_barcodes & valid_articles
+                    valid_df = df[valid_mask].copy()
+                    
+                    if len(valid_df) > 0:
+                        success, message = CatalogService.add_catalog_entries(valid_df)
+                        if success:
+                            st.success(f"Successfully imported {len(valid_df)} records")
+                        else:
+                            st.error(message)
+                    else:
+                        st.warning("No valid records to import")
+            else:
+                unmapped = [col for col in required_columns 
+                           if f"mapping_{col}_{file_hash}" not in st.session_state.mappings]
+                st.warning(f"Please map the following columns to proceed: {', '.join(unmapped)}")
+                
         except Exception as e:
             st.error(f"Error processing file: {str(e)}")
