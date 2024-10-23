@@ -603,6 +603,7 @@ name = "repl-nix-workspace"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "pandas" },
     { name = "psycopg2-binary" },
     { name = "sqlalchemy" },
     { name = "streamlit" },
@@ -610,6 +611,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "pandas", specifier = ">=2.2.3" },
     { name = "psycopg2-binary", specifier = ">=2.9.10" },
     { name = "sqlalchemy", specifier = ">=2.0.36" },
     { name = "streamlit", specifier = ">=1.39.0" },
