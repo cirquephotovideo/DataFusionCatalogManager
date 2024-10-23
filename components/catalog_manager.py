@@ -11,6 +11,8 @@ def validate_price(price):
     try:
         # Handle string inputs that might have commas
         if isinstance(price, str):
+            # Remove any currency symbols or spaces
+            price = price.replace('€', '').replace('$', '').strip()
             price = price.replace(',', '.')
         # Convert to float and ensure it's positive
         price_value = float(price)
@@ -137,7 +139,7 @@ def render_catalog_manager():
                                 # Validate data
                                 valid_barcodes = mapped_df['barcode'].apply(validate_ean13)
                                 valid_articles = mapped_df['article_code'].apply(validate_article_code)
-                                valid_prices = mapped_df['price'].apply(validate_price)
+                                valid_prices = mapped_df['price'].astype(str).apply(validate_price)
                                 
                                 # Show validation summary
                                 st.subheader("Data Validation")
@@ -155,6 +157,10 @@ def render_catalog_manager():
                                 valid_df = mapped_df[valid_mask].copy()
                                 
                                 if len(valid_df) > 0:
+                                    # Format prices to proper float values
+                                    valid_df['price'] = valid_df['price'].astype(str).apply(
+                                        lambda x: float(str(x).replace(',', '.').replace('€', '').replace('$', '').strip())
+                                    )
                                     success, message = import_catalog_data(valid_df)
                                     if success:
                                         st.success(f"✅ Successfully imported {len(valid_df)} records")
