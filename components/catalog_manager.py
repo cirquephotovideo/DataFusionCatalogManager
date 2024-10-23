@@ -1,9 +1,14 @@
 import streamlit as st
 import pandas as pd
+import hashlib
 from utils.validators import validate_ean13, validate_article_code, validate_required_fields
 from utils.processors import process_file, standardize_catalog_data, get_example_csv_content, get_example_excel_content
 from utils.helpers import prepare_catalog_summary
 from services.catalog_service import CatalogService
+
+def generate_file_hash(df):
+    """Generate a unique hash for the dataframe content"""
+    return hashlib.md5(pd.util.hash_pandas_object(df).values).hexdigest()
 
 def render_catalog_manager():
     st.header("Catalog Management")
@@ -43,6 +48,9 @@ def render_catalog_manager():
                 preview_df = pd.read_excel(uploaded_file, nrows=20)
             st.dataframe(preview_df)
             
+            # Generate unique hash for the file content
+            file_hash = generate_file_hash(preview_df)
+            
             # 2. Row selection
             header_row = st.number_input("Select Header Row Number", min_value=1, value=1)
             start_row = st.number_input("Start Reading Data from Row", min_value=header_row+1, value=header_row+1)
@@ -57,40 +65,60 @@ def render_catalog_manager():
                 else:
                     df = pd.read_excel(uploaded_file, header=header_row-1, skiprows=list(range(1, start_row)))
                 
+                # Initialize mapping in session state if not exists
+                if f"mapping_{file_hash}" not in st.session_state:
+                    st.session_state[f"mapping_{file_hash}"] = {}
+                
                 # 3. Show column mapping interface
                 st.subheader("Map Required Columns")
                 available_columns = df.columns.tolist()
-                mapping = {}
                 required_columns = ['article_code', 'barcode', 'brand', 'description', 'price']
                 
                 # Reset mapping button
-                if st.button("Reset Mapping"):
-                    for col in required_columns:
-                        if f"map_{col}_{header_row}_{start_row}" in st.session_state:
-                            del st.session_state[f"map_{col}_{header_row}_{start_row}"]
+                col1, col2 = st.columns([1, 4])
+                with col1:
+                    if st.button("Reset Mapping"):
+                        st.session_state[f"mapping_{file_hash}"] = {}
+                        st.experimental_rerun()
                 
-                # Create columns for better layout
-                col1, col2 = st.columns(2)
+                with col2:
+                    st.info("💡 Your column mapping will be preserved until you reset it or upload a different file.")
+                
+                # Create mapping interface
+                mapping = st.session_state[f"mapping_{file_hash}"]
+                cols = st.columns(2)
+                
                 for idx, required_col in enumerate(required_columns):
-                    # Alternate between columns
-                    with col1 if idx % 2 == 0 else col2:
-                        mapping[required_col] = st.selectbox(
+                    with cols[idx % 2]:
+                        # Use session state value if exists, otherwise empty
+                        current_value = mapping.get(required_col, '')
+                        
+                        # Create selectbox with current value
+                        selected_col = st.selectbox(
                             f"Map {required_col} to:",
                             options=[''] + available_columns,
-                            key=f"map_{required_col}_{header_row}_{start_row}"
+                            index=0 if not current_value else available_columns.index(current_value) + 1,
+                            key=f"select_{required_col}_{file_hash}"
                         )
                         
-                        # Show validation status and preview
-                        if mapping[required_col]:
-                            st.success(f"✓ {required_col} mapped")
-                            st.write(f"Preview of {required_col}:")
-                            st.dataframe(df[mapping[required_col]].head(3))
+                        # Update mapping in session state
+                        if selected_col:
+                            mapping[required_col] = selected_col
+                            # Show preview and validation
+                            st.success(f"✓ {required_col} mapped to {selected_col}")
+                            with st.expander(f"Preview {required_col} data"):
+                                st.dataframe(df[selected_col].head(3))
                         else:
+                            if required_col in mapping:
+                                del mapping[required_col]
                             st.error(f"✗ {required_col} not mapped")
                 
+                # Save mapping back to session state
+                st.session_state[f"mapping_{file_hash}"] = mapping
+                
                 # Only proceed if user has mapped all required columns
-                if all(mapping.values()):
-                    st.success("All required columns are mapped!")
+                if len(mapping) == len(required_columns):
+                    st.success("✅ All required columns are mapped!")
                     
                     if st.button("Apply Mapping"):
                         # Create reverse mapping and process
