@@ -7,6 +7,7 @@ from components.ftp_manager import render_ftp_manager
 from components.sync_monitor import render_sync_monitor
 from services.websocket_handler import start_websocket_server
 from services.sync_service import sync_service
+import threading
 
 st.set_page_config(
     page_title="Catalog Management System",
@@ -33,30 +34,35 @@ def main():
     else:
         render_matching_engine()
 
-async def init_background_services():
-    """Initialize background services"""
-    sync_service.start_scheduler()
-    server = await start_websocket_server()
+def run_async_services():
+    """Run async services in a separate thread"""
+    async def start_services():
+        sync_service.start_scheduler()
+        server = await start_websocket_server()
+        try:
+            while True:
+                await asyncio.sleep(1)
+        except asyncio.CancelledError:
+            sync_service.stop_scheduler()
+            server.close()
+            await server.wait_closed()
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     try:
-        await asyncio.Future()  # run forever
+        loop.run_until_complete(start_services())
+    except KeyboardInterrupt:
+        pending = asyncio.all_tasks(loop)
+        for task in pending:
+            task.cancel()
+        loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
     finally:
-        sync_service.stop_scheduler()
-        server.close()
-        await server.wait_closed()
+        loop.close()
 
 if __name__ == "__main__":
     # Start background services in a separate thread
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
+    services_thread = threading.Thread(target=run_async_services, daemon=True)
+    services_thread.start()
     
-    # Run the background services in a separate thread
-    background_task = loop.create_task(init_background_services())
-    
-    try:
-        # Run the Streamlit app
-        main()
-    except KeyboardInterrupt:
-        # Ensure clean shutdown
-        background_task.cancel()
-        loop.run_until_complete(loop.shutdown_asyncgens())
-        loop.close()
+    # Run the Streamlit app
+    main()
