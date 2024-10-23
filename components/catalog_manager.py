@@ -34,81 +34,88 @@ def render_catalog_manager():
     if uploaded_file is not None:
         file_type = uploaded_file.name.split('.')[-1].lower()
         
-        # First just read the file to get columns
-        if file_type == 'csv':
-            df, success, message = process_file(uploaded_file, 'csv')
-        else:
-            df, success, message = process_file(uploaded_file, 'excel')
-        
-        if not success:
-            st.error(message)
-        else:
-            # Show mapping interface
-            st.subheader("Map Your Columns")
-            file_columns = df.columns.tolist()
-            mapping = {}
-            required_columns = ['article_code', 'barcode', 'brand', 'description', 'price']
+        # 1. Show raw data preview first
+        st.subheader("Raw Data Preview (First 20 Rows)")
+        try:
+            if file_type == 'csv':
+                preview_df = pd.read_csv(uploaded_file, nrows=20, encoding_errors='replace')
+            else:
+                preview_df = pd.read_excel(uploaded_file, nrows=20)
+            st.dataframe(preview_df)
             
-            for required_col in required_columns:
-                mapping[required_col] = st.selectbox(
-                    f"Map {required_col} to:",
-                    options=[''] + file_columns,
-                    key=f"map_{required_col}"
-                )
+            # 2. Row selection
+            header_row = st.number_input("Select Header Row Number", min_value=1, value=1)
+            start_row = st.number_input("Start Reading Data from Row", min_value=header_row+1, value=header_row+1)
             
-            # Preview unmapped data with row selection
-            st.subheader("Data Preview (Before Mapping)")
-            preview_rows = min(10, len(df))
-            st.dataframe(df.head(preview_rows))
-            
-            # Row selection feature
-            st.subheader("Row Selection")
-            start_row = st.number_input("Start Row", min_value=0, max_value=len(df)-1, value=0)
-            end_row = st.number_input("End Row", min_value=start_row+1, max_value=len(df), value=min(start_row+100, len(df)))
-            
-            # Only proceed if user has mapped all required columns
-            if st.button("Apply Mapping") and all(mapping.values()):
-                # Create reverse mapping and process
-                reverse_mapping = {v: k for k, v in mapping.items()}
-                selected_df = df.iloc[start_row:end_row].copy()
-                selected_df = selected_df.rename(columns=reverse_mapping)
+            if st.button("Confirm Row Selection"):
+                # Reset file pointer
+                uploaded_file.seek(0)
                 
-                # Display summary
-                summary = prepare_catalog_summary(selected_df)
-                st.subheader("Catalog Summary")
-                col1, col2, col3 = st.columns(3)
-                col1.metric("Selected Records", summary['total_records'])
-                col2.metric("Unique Brands", summary['unique_brands'])
-                col3.metric("Valid Barcodes", summary['valid_barcodes'])
+                # Re-read file with selected rows
+                if file_type == 'csv':
+                    df = pd.read_csv(uploaded_file, header=header_row-1, skiprows=range(1, start_row))
+                else:
+                    df = pd.read_excel(uploaded_file, header=header_row-1, skiprows=range(1, start_row))
                 
-                # Display preview of mapped data
-                st.subheader("Data Preview (After Mapping)")
-                st.dataframe(selected_df.head(preview_rows))
+                # 3. Show column mapping interface
+                st.subheader("Map Required Columns")
+                available_columns = df.columns.tolist()
+                mapping = {}
+                required_columns = ['article_code', 'barcode', 'brand', 'description', 'price']
                 
-                # Data validation status
-                st.subheader("Data Validation")
-                valid_barcodes = selected_df['barcode'].apply(validate_ean13)
-                valid_articles = selected_df['article_code'].apply(validate_article_code)
+                for required_col in required_columns:
+                    mapping[required_col] = st.selectbox(
+                        f"Map {required_col} to:",
+                        options=[''] + available_columns,
+                        key=f"map_{required_col}"
+                    )
                 
-                validation_status = pd.DataFrame({
-                    'Total Records': [len(selected_df)],
-                    'Valid Barcodes': [valid_barcodes.sum()],
-                    'Valid Article Codes': [valid_articles.sum()],
-                    'Invalid Records': [len(selected_df) - min(valid_barcodes.sum(), valid_articles.sum())]
-                })
-                st.dataframe(validation_status)
-                
-                # Import option
-                if st.button("Import Selected Rows"):
-                    # Filter out invalid records
-                    valid_mask = valid_barcodes & valid_articles
-                    valid_df = selected_df[valid_mask]
+                # Only proceed if user has mapped all required columns
+                if st.button("Apply Mapping") and all(mapping.values()):
+                    # Create reverse mapping and process
+                    reverse_mapping = {v: k for k, v in mapping.items()}
+                    df = df.rename(columns=reverse_mapping)
                     
-                    if len(valid_df) > 0:
-                        success, message = CatalogService.add_catalog_entries(valid_df)
-                        if success:
-                            st.success(f"Successfully imported {len(valid_df)} records")
+                    # Display preview of mapped data
+                    st.subheader("Data Preview (After Mapping)")
+                    preview_rows = min(10, len(df))
+                    st.dataframe(df.head(preview_rows))
+                    
+                    # Data validation
+                    st.subheader("Data Validation")
+                    valid_barcodes = df['barcode'].apply(validate_ean13)
+                    valid_articles = df['article_code'].apply(validate_article_code)
+                    
+                    validation_status = pd.DataFrame({
+                        'Total Records': [len(df)],
+                        'Valid Barcodes': [valid_barcodes.sum()],
+                        'Valid Article Codes': [valid_articles.sum()],
+                        'Invalid Records': [len(df) - min(valid_barcodes.sum(), valid_articles.sum())]
+                    })
+                    st.dataframe(validation_status)
+                    
+                    # Display summary
+                    summary = prepare_catalog_summary(df)
+                    st.subheader("Catalog Summary")
+                    col1, col2, col3 = st.columns(3)
+                    col1.metric("Total Records", summary['total_records'])
+                    col2.metric("Unique Brands", summary['unique_brands'])
+                    col3.metric("Valid Barcodes", summary['valid_barcodes'])
+                    
+                    # Import option
+                    if st.button("Import Valid Records"):
+                        # Filter out invalid records
+                        valid_mask = valid_barcodes & valid_articles
+                        valid_df = df[valid_mask]
+                        
+                        if len(valid_df) > 0:
+                            success, message = CatalogService.add_catalog_entries(valid_df)
+                            if success:
+                                st.success(f"Successfully imported {len(valid_df)} records")
+                            else:
+                                st.error(message)
                         else:
-                            st.error(message)
-                    else:
-                        st.warning("No valid records to import")
+                            st.warning("No valid records to import")
+                            
+        except Exception as e:
+            st.error(f"Error processing file: {str(e)}")
