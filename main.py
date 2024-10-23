@@ -14,12 +14,6 @@ st.set_page_config(
     layout="wide"
 )
 
-async def init_sync_service():
-    """Initialize sync service and WebSocket server"""
-    sync_service.start_scheduler()
-    server = await start_websocket_server()
-    await server.wait_closed()
-
 def main():
     st.title("Catalog Management System")
     
@@ -39,11 +33,30 @@ def main():
     else:
         render_matching_engine()
 
+async def init_background_services():
+    """Initialize background services"""
+    sync_service.start_scheduler()
+    server = await start_websocket_server()
+    try:
+        await asyncio.Future()  # run forever
+    finally:
+        sync_service.stop_scheduler()
+        server.close()
+        await server.wait_closed()
+
 if __name__ == "__main__":
-    # Start sync service and WebSocket server
+    # Start background services in a separate thread
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-    loop.create_task(init_sync_service())
     
-    # Run the Streamlit app
-    main()
+    # Run the background services in a separate thread
+    background_task = loop.create_task(init_background_services())
+    
+    try:
+        # Run the Streamlit app
+        main()
+    except KeyboardInterrupt:
+        # Ensure clean shutdown
+        background_task.cancel()
+        loop.run_until_complete(loop.shutdown_asyncgens())
+        loop.close()
