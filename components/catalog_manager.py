@@ -7,20 +7,15 @@ from utils.helpers import prepare_catalog_summary
 from services.catalog_service import CatalogService
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-def validate_price(price):
+def validate_price(value):
     try:
-        # Handle different numeric types
-        if isinstance(price, (int, float)):
-            return float(price) >= 0
-            
-        # Handle string inputs
-        if isinstance(price, str):
-            # Remove currency symbols and convert commas to dots
-            price = price.replace('€', '').replace('$', '').replace(',', '.').strip()
-            value = float(price)
-            return value >= 0
-            
-        return False
+        # Convert value to string and clean it
+        if isinstance(value, str):
+            # Remove currency symbols and spaces, replace comma with dot
+            value = value.replace('€', '').replace('$', '').replace(',', '.').strip()
+        # Convert to float
+        price = float(value)
+        return price >= 0
     except (ValueError, TypeError):
         return False
 
