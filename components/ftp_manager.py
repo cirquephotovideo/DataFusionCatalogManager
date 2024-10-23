@@ -6,6 +6,13 @@ from utils.helpers import prepare_catalog_summary
 def render_ftp_manager():
     st.header("FTP Data Retrieval")
 
+    # Initialize session state for saved connections and scheduled downloads
+    if 'saved_ftp_connections' not in st.session_state:
+        st.session_state.saved_ftp_connections = []
+    
+    if 'scheduled_downloads' not in st.session_state:
+        st.session_state.scheduled_downloads = []
+
     # FTP Connection Configuration
     with st.form("ftp_config"):
         st.subheader("FTP Server Configuration")
@@ -18,6 +25,9 @@ def render_ftp_manager():
         with col2:
             port = st.number_input("Port", value=21, min_value=1, max_value=65535)
             password = st.text_input("Password (optional)", type="password")
+
+        # Add checkbox for saving connection
+        save_connection = st.checkbox("Save connection details")
         
         connect_button = st.form_submit_button("Connect to FTP")
         
@@ -31,8 +41,38 @@ def render_ftp_manager():
                 if success:
                     st.session_state['ftp_service'] = ftp_service
                     st.success(message)
+                    
+                    # Save connection if checkbox is checked
+                    if save_connection:
+                        connection = {
+                            'host': host,
+                            'username': username,
+                            'password': password,
+                            'port': port
+                        }
+                        if connection not in st.session_state.saved_ftp_connections:
+                            st.session_state.saved_ftp_connections.append(connection)
+                            st.success("Connection saved!")
                 else:
                     st.error(message)
+
+    # Show saved connections
+    if st.session_state.saved_ftp_connections:
+        st.subheader("Saved Connections")
+        saved_connection = st.selectbox(
+            "Select saved connection",
+            options=range(len(st.session_state.saved_ftp_connections)),
+            format_func=lambda x: f"{st.session_state.saved_ftp_connections[x]['host']}"
+        )
+        
+        if st.button("Use Saved Connection"):
+            connection = st.session_state.saved_ftp_connections[saved_connection]
+            st.session_state.update({
+                'host': connection['host'],
+                'username': connection['username'],
+                'password': connection['password'],
+                'port': connection['port']
+            })
 
     # File Browser and Download
     if 'ftp_service' in st.session_state:
@@ -45,11 +85,30 @@ def render_ftp_manager():
             if files:
                 selected_file = st.selectbox("Select File", files)
                 
+                # Add scheduling option
+                schedule_daily = st.checkbox("Schedule daily download")
+                
                 if st.button("Download and Process"):
                     with st.spinner("Downloading and processing file..."):
                         success, df, message = ftp_service.download_file(selected_file)
                         
                         if success:
+                            # Add to scheduled downloads if checkbox is checked
+                            if schedule_daily:
+                                scheduled_item = {
+                                    'connection': {
+                                        'host': host,
+                                        'username': username,
+                                        'password': password,
+                                        'port': port
+                                    },
+                                    'file': selected_file,
+                                    'last_download': None
+                                }
+                                if scheduled_item not in st.session_state.scheduled_downloads:
+                                    st.session_state.scheduled_downloads.append(scheduled_item)
+                                    st.success(f"Scheduled daily download for {selected_file}")
+                            
                             # Show mapping interface
                             st.subheader("Map Your Columns")
                             csv_columns = df.columns.tolist()

@@ -7,15 +7,18 @@ from utils.helpers import prepare_catalog_summary
 from services.catalog_service import CatalogService
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-def validate_price(value):
+def validate_price(price):
     try:
-        if isinstance(value, (int, float)):
-            return float(value) >= 0
+        # Handle numeric inputs directly
+        if isinstance(price, (int, float)):
+            return float(price) >= 0
             
-        if isinstance(value, str):
-            # Remove currency symbols and convert commas to dots
-            cleaned = value.replace('€', '').replace('$', '').replace(',', '.').strip()
-            return float(cleaned) >= 0
+        # Handle string inputs
+        if isinstance(price, str):
+            # Remove all non-numeric characters except decimal point
+            value = ''.join(c for c in price if c.isdigit() or c == '.' or c == ',')
+            value = value.replace(',', '.')
+            return float(value) >= 0
             
         return False
     except (ValueError, TypeError):
@@ -158,9 +161,9 @@ def render_catalog_manager():
                                 valid_df = mapped_df[valid_mask].copy()
                                 
                                 if len(valid_df) > 0:
-                                    # Convert prices to float
+                                    # Convert prices to float before import
                                     valid_df['price'] = valid_df['price'].apply(
-                                        lambda x: float(str(x).replace('€', '').replace('$', '').replace(',', '.').strip())
+                                        lambda x: float(''.join(c for c in str(x) if c.isdigit() or c == '.' or c == ',').replace(',', '.'))
                                         if isinstance(x, str) else float(x)
                                     )
                                     success, message = import_catalog_data(valid_df)
