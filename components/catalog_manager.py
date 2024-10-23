@@ -7,6 +7,15 @@ from utils.helpers import prepare_catalog_summary
 from services.catalog_service import CatalogService
 from tenacity import retry, stop_after_attempt, wait_exponential
 
+def validate_price(price):
+    """Validate price value"""
+    try:
+        # Convert to float and ensure it's positive
+        price_value = float(str(price).replace(',', '.'))
+        return price_value >= 0
+    except:
+        return False
+
 def generate_file_hash(df):
     """Generate a unique hash for the dataframe content"""
     return hashlib.md5(str(df.values.tobytes()).encode()).hexdigest()
@@ -147,6 +156,7 @@ def render_catalog_manager():
                                 # Validate data
                                 valid_barcodes = mapped_df['barcode'].apply(validate_ean13)
                                 valid_articles = mapped_df['article_code'].apply(validate_article_code)
+                                valid_prices = mapped_df['price'].apply(validate_price)
                                 
                                 # Show validation summary
                                 st.subheader("Data Validation")
@@ -154,22 +164,52 @@ def render_catalog_manager():
                                     'Total Records': [len(mapped_df)],
                                     'Valid Barcodes': [valid_barcodes.sum()],
                                     'Valid Article Codes': [valid_articles.sum()],
-                                    'Invalid Records': [len(mapped_df) - min(valid_barcodes.sum(), valid_articles.sum())]
+                                    'Valid Prices': [valid_prices.sum()],
+                                    'Invalid Records': [len(mapped_df) - min(valid_barcodes.sum(), valid_articles.sum(), valid_prices.sum())]
                                 })
                                 st.dataframe(validation_df)
                                 
+                                # Create detailed import report
+                                import_report = pd.DataFrame({
+                                    'row': range(len(mapped_df)),
+                                    'status': 'Invalid',
+                                    'reason': 'Unknown'
+                                })
+                                
+                                # Update status for each validation
+                                import_report.loc[~valid_barcodes, 'reason'] = 'Invalid barcode'
+                                import_report.loc[~valid_articles, 'reason'] = 'Invalid article code'
+                                import_report.loc[~valid_prices, 'reason'] = 'Invalid price (must be a positive number)'
+                                
                                 # Process valid records
-                                valid_mask = valid_barcodes & valid_articles
+                                valid_mask = valid_barcodes & valid_articles & valid_prices
                                 valid_df = mapped_df[valid_mask].copy()
                                 
                                 if len(valid_df) > 0:
                                     success, message = import_catalog_data(valid_df)
                                     if success:
+                                        import_report.loc[valid_mask, 'status'] = 'Imported'
                                         st.success(f"✅ Successfully imported {len(valid_df)} records")
                                     else:
                                         st.error(f"❌ Import failed: {message}")
                                 else:
                                     st.warning("⚠️ No valid records to import")
+                                
+                                # Show import report
+                                st.subheader("Import Report")
+                                st.write(f"Successfully imported {valid_mask.sum()} out of {len(mapped_df)} records")
+                                st.dataframe(import_report)
+                                
+                                # Download report option
+                                csv = import_report.to_csv(index=False)
+                                st.download_button(
+                                    "📥 Download Import Report",
+                                    csv,
+                                    "import_report.csv",
+                                    "text/csv",
+                                    help="Download detailed import results"
+                                )
+                                
                             except Exception as e:
                                 st.error(f"❌ Error during import: {str(e)}")
                                 st.info("💡 Please try again or contact support if the issue persists")
