@@ -8,34 +8,50 @@ def validate_csv_columns(df: pd.DataFrame) -> Tuple[bool, List[str]]:
     missing_columns = [col for col in required_columns if col not in df.columns]
     return len(missing_columns) == 0, missing_columns
 
-def process_csv(file) -> Tuple[pd.DataFrame, bool, str]:
-    """Process uploaded CSV file with validation and encoding handling"""
+def read_csv_file(file) -> Tuple[pd.DataFrame, bool, str]:
+    """Read CSV file without validation, trying different encodings"""
     encodings = ['utf-8', 'latin-1', 'cp1252']
     
     for encoding in encodings:
         try:
             df = pd.read_csv(file, encoding=encoding, encoding_errors='replace', on_bad_lines='skip')
-            # Validate required columns
-            columns_valid, missing_columns = validate_csv_columns(df)
-            if not columns_valid:
-                return pd.DataFrame(), False, f"Missing required columns: {', '.join(missing_columns)}"
-            
-            # Fill missing values with appropriate defaults
-            defaults = {
-                'article_code': '',
-                'barcode': '',
-                'brand': '',
-                'description': '',
-                'price': 0.0
-            }
-            df = df.fillna(defaults)
-            return df, True, "CSV processed successfully"
+            return df, True, "CSV read successfully"
         except UnicodeDecodeError:
             continue
         except Exception as e:
-            return pd.DataFrame(), False, f"Error processing CSV: {str(e)}"
+            return pd.DataFrame(), False, f"Error reading CSV: {str(e)}"
     
-    return pd.DataFrame(), False, "Unable to process CSV with any supported encoding"
+    return pd.DataFrame(), False, "Unable to read CSV with any supported encoding"
+
+def process_csv(file, column_mapping: Dict[str, str] = None) -> Tuple[pd.DataFrame, bool, str]:
+    """Process uploaded CSV file with validation and encoding handling"""
+    # First read the CSV file
+    df, success, message = read_csv_file(file)
+    if not success:
+        return pd.DataFrame(), False, message
+    
+    # Apply column mapping if provided
+    if column_mapping:
+        try:
+            df = df.rename(columns=column_mapping)
+        except Exception as e:
+            return pd.DataFrame(), False, f"Error applying column mapping: {str(e)}"
+    
+    # Validate required columns
+    columns_valid, missing_columns = validate_csv_columns(df)
+    if not columns_valid:
+        return pd.DataFrame(), False, f"Missing required columns: {', '.join(missing_columns)}"
+    
+    # Fill missing values with appropriate defaults
+    defaults = {
+        'article_code': '',
+        'barcode': '',
+        'brand': '',
+        'description': '',
+        'price': 0.0
+    }
+    df = df.fillna(defaults)
+    return df, True, "CSV processed successfully"
 
 def generate_fusion_code(article_code: str, brand: str) -> str:
     """Generate unique fusion article code"""

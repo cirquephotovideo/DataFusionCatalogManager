@@ -3,7 +3,7 @@ import os
 import tempfile
 from typing import Tuple, List
 import pandas as pd
-from utils.processors import process_csv, standardize_catalog_data
+from utils.processors import read_csv_file, process_csv, standardize_catalog_data
 
 class FTPService:
     def __init__(self, host: str, username: str = "", password: str = "", port: int = 21):
@@ -54,15 +54,14 @@ class FTPService:
                 self.ftp.retrbinary(f'RETR {remote_path}', temp_file.write)
                 temp_file_path = temp_file.name
 
-            # Process the downloaded file
-            df, success, message = process_csv(temp_file_path)
+            # Just read the CSV file without processing
+            df, success, message = read_csv_file(temp_file_path)
             
             # Clean up temporary file
             os.unlink(temp_file_path)
             
             if success:
-                df = standardize_catalog_data(df)
-                return True, df, "File downloaded and processed successfully"
+                return True, df, "File downloaded successfully"
             return False, pd.DataFrame(), message
             
         except Exception as e:

@@ -50,25 +50,48 @@ def render_ftp_manager():
                         success, df, message = ftp_service.download_file(selected_file)
                         
                         if success:
-                            # Display summary
-                            summary = prepare_catalog_summary(df)
-                            st.subheader("Catalog Summary")
-                            col1, col2, col3 = st.columns(3)
-                            col1.metric("Total Records", summary['total_records'])
-                            col2.metric("Unique Brands", summary['unique_brands'])
-                            col3.metric("Valid Barcodes", summary['valid_barcodes'])
+                            # Show mapping interface
+                            st.subheader("Map Your Columns")
+                            csv_columns = df.columns.tolist()
+                            mapping = {}
+                            required_columns = ['article_code', 'barcode', 'brand', 'description', 'price']
                             
-                            # Display preview
-                            st.subheader("Data Preview")
+                            for required_col in required_columns:
+                                mapping[required_col] = st.selectbox(
+                                    f"Map {required_col} to:",
+                                    options=[''] + csv_columns,
+                                    key=f"map_{required_col}_ftp"
+                                )
+                            
+                            # Preview unmapped data
+                            st.subheader("Data Preview (Before Mapping)")
                             st.dataframe(df.head())
                             
-                            # Import option
-                            if st.button("Import to Database"):
-                                success, message = CatalogService.add_catalog_entries(df)
-                                if success:
-                                    st.success(message)
-                                else:
-                                    st.error(message)
+                            # Only proceed if user has mapped all required columns
+                            if st.button("Apply Mapping") and all(mapping.values()):
+                                # Create reverse mapping and process
+                                reverse_mapping = {v: k for k, v in mapping.items()}
+                                df = df.rename(columns=reverse_mapping)
+                                
+                                # Display summary
+                                summary = prepare_catalog_summary(df)
+                                st.subheader("Catalog Summary")
+                                col1, col2, col3 = st.columns(3)
+                                col1.metric("Total Records", summary['total_records'])
+                                col2.metric("Unique Brands", summary['unique_brands'])
+                                col3.metric("Valid Barcodes", summary['valid_barcodes'])
+                                
+                                # Display preview
+                                st.subheader("Data Preview (After Mapping)")
+                                st.dataframe(df.head())
+                                
+                                # Import option
+                                if st.button("Import to Database"):
+                                    success, message = CatalogService.add_catalog_entries(df)
+                                    if success:
+                                        st.success(message)
+                                    else:
+                                        st.error(message)
                         else:
                             st.error(message)
             else:
