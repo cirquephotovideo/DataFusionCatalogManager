@@ -66,107 +66,95 @@ def render_catalog_manager():
                     df = pd.read_excel(uploaded_file, header=header_row-1, skiprows=list(range(1, start_row)))
                 
                 # Initialize mapping in session state if not exists
-                if f"mapping_{file_hash}" not in st.session_state:
-                    st.session_state[f"mapping_{file_hash}"] = {}
+                mapping_key = f"mapping_{file_hash}"
+                if mapping_key not in st.session_state:
+                    st.session_state[mapping_key] = {}
                 
                 # 3. Show column mapping interface
                 st.subheader("Map Required Columns")
                 available_columns = df.columns.tolist()
                 required_columns = ['article_code', 'barcode', 'brand', 'description', 'price']
                 
-                # Reset mapping button
+                # Reset mapping button with confirmation
                 col1, col2 = st.columns([1, 4])
                 with col1:
                     if st.button("Reset Mapping"):
-                        st.session_state[f"mapping_{file_hash}"] = {}
-                        st.experimental_rerun()
+                        if st.session_state[mapping_key]:
+                            st.session_state[mapping_key] = {}
+                            st.warning("Column mapping has been reset.")
                 
                 with col2:
                     st.info("💡 Your column mapping will be preserved until you reset it or upload a different file.")
                 
-                # Create mapping interface
-                mapping = st.session_state[f"mapping_{file_hash}"]
-                cols = st.columns(2)
+                # Create mapping interface with column layout
+                col1, col2 = st.columns(2)
+                unmapped_columns = []
                 
                 for idx, required_col in enumerate(required_columns):
-                    with cols[idx % 2]:
-                        # Use session state value if exists, otherwise empty
-                        current_value = mapping.get(required_col, '')
+                    with col1 if idx % 2 == 0 else col2:
+                        # Get current mapping value from session state
+                        current_value = st.session_state[mapping_key].get(required_col, '')
                         
-                        # Create selectbox with current value
+                        # Create selectbox with unique key
                         selected_col = st.selectbox(
                             f"Map {required_col} to:",
                             options=[''] + available_columns,
                             index=0 if not current_value else available_columns.index(current_value) + 1,
-                            key=f"select_{required_col}_{file_hash}"
+                            key=f"map_{required_col}_{file_hash}"
                         )
                         
                         # Update mapping in session state
                         if selected_col:
-                            mapping[required_col] = selected_col
-                            # Show preview and validation
+                            st.session_state[mapping_key][required_col] = selected_col
                             st.success(f"✓ {required_col} mapped to {selected_col}")
+                            
+                            # Show data preview in expander
                             with st.expander(f"Preview {required_col} data"):
                                 st.dataframe(df[selected_col].head(3))
                         else:
-                            if required_col in mapping:
-                                del mapping[required_col]
+                            unmapped_columns.append(required_col)
+                            if required_col in st.session_state[mapping_key]:
+                                del st.session_state[mapping_key][required_col]
                             st.error(f"✗ {required_col} not mapped")
                 
-                # Save mapping back to session state
-                st.session_state[f"mapping_{file_hash}"] = mapping
-                
-                # Only proceed if user has mapped all required columns
-                if len(mapping) == len(required_columns):
+                # Show import section immediately after mapping
+                st.markdown("---")
+                if unmapped_columns:
+                    st.warning(f"Please map the following columns to proceed: {', '.join(unmapped_columns)}")
+                else:
                     st.success("✅ All required columns are mapped!")
-                    
-                    if st.button("Apply Mapping"):
+                    if st.button("Process and Import Data", key=f"import_button_{file_hash}"):
                         # Create reverse mapping and process
+                        mapping = st.session_state[mapping_key]
                         reverse_mapping = {v: k for k, v in mapping.items()}
                         df = df.rename(columns=reverse_mapping)
                         
-                        # Display preview of mapped data
-                        st.subheader("Data Preview (After Mapping)")
-                        preview_rows = min(10, len(df))
-                        st.dataframe(df.head(preview_rows))
-                        
                         # Data validation
-                        st.subheader("Data Validation")
                         valid_barcodes = df['barcode'].apply(validate_ean13)
                         valid_articles = df['article_code'].apply(validate_article_code)
                         
-                        validation_status = pd.DataFrame({
+                        # Show validation summary
+                        st.subheader("Data Validation")
+                        validation_df = pd.DataFrame({
                             'Total Records': [len(df)],
                             'Valid Barcodes': [valid_barcodes.sum()],
                             'Valid Article Codes': [valid_articles.sum()],
                             'Invalid Records': [len(df) - min(valid_barcodes.sum(), valid_articles.sum())]
                         })
-                        st.dataframe(validation_status)
+                        st.dataframe(validation_df)
                         
-                        # Display summary
-                        summary = prepare_catalog_summary(df)
-                        st.subheader("Catalog Summary")
-                        col1, col2, col3 = st.columns(3)
-                        col1.metric("Total Records", summary['total_records'])
-                        col2.metric("Unique Brands", summary['unique_brands'])
-                        col3.metric("Valid Barcodes", summary['valid_barcodes'])
+                        # Filter and import valid records
+                        valid_mask = valid_barcodes & valid_articles
+                        valid_df = df[valid_mask]
                         
-                        # Import option
-                        if st.button("Import Valid Records"):
-                            # Filter out invalid records
-                            valid_mask = valid_barcodes & valid_articles
-                            valid_df = df[valid_mask]
-                            
-                            if len(valid_df) > 0:
-                                success, message = CatalogService.add_catalog_entries(valid_df)
-                                if success:
-                                    st.success(f"Successfully imported {len(valid_df)} records")
-                                else:
-                                    st.error(message)
+                        if len(valid_df) > 0:
+                            success, message = CatalogService.add_catalog_entries(valid_df)
+                            if success:
+                                st.success(f"Successfully imported {len(valid_df)} records")
                             else:
-                                st.warning("No valid records to import")
-                else:
-                    st.warning("Please map all required columns before proceeding")
+                                st.error(message)
+                        else:
+                            st.warning("No valid records to import")
                             
         except Exception as e:
             st.error(f"Error processing file: {str(e)}")
