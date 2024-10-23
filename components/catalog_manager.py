@@ -9,12 +9,18 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 
 def validate_price(price):
     try:
-        # Convert any input to float
+        # Handle different numeric types
+        if isinstance(price, (int, float)):
+            return float(price) >= 0
+            
+        # Handle string inputs
         if isinstance(price, str):
             # Remove currency symbols and convert commas to dots
             price = price.replace('€', '').replace('$', '').replace(',', '.').strip()
-        price_value = float(price)
-        return price_value >= 0
+            value = float(price)
+            return value >= 0
+            
+        return False
     except (ValueError, TypeError):
         return False
 
