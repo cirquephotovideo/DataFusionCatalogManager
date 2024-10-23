@@ -12,7 +12,7 @@ def validate_price(price):
         # Handle string inputs that might have commas
         if isinstance(price, str):
             price = price.replace(',', '.')
-        # Convert to float and check if positive
+        # Convert to float and ensure it's positive
         price_value = float(price)
         return price_value >= 0
     except (ValueError, TypeError):
@@ -30,15 +30,13 @@ def import_catalog_data(df):
 def render_catalog_manager():
     st.header("Catalog Management")
     
-    # Initialize mapping state at the top level
+    # Initialize session state for mapping
     if 'mapping_state' not in st.session_state:
-        st.session_state.mapping_state = {
-            'article_code': '',
-            'barcode': '',
-            'brand': '',
-            'description': '',
-            'price': ''
-        }
+        st.session_state.mapping_state = {}
+    
+    # Initialize session state for file hash
+    if 'current_file_hash' not in st.session_state:
+        st.session_state.current_file_hash = None
     
     # Show example file formats
     example_format = st.radio("View Example Format", ["CSV", "Excel"])
@@ -67,7 +65,7 @@ def render_catalog_manager():
         try:
             file_type = uploaded_file.name.split('.')[-1].lower()
             
-            # 1. Show raw data preview
+            # Show raw data preview
             st.subheader("Raw Data Preview")
             if file_type == 'csv':
                 preview_df = pd.read_csv(uploaded_file, nrows=20, encoding_errors='replace')
@@ -78,18 +76,12 @@ def render_catalog_manager():
             # Generate hash for current file
             current_file_hash = generate_file_hash(preview_df)
             
-            # Initialize/reset mapping state for new file
-            if 'current_file_hash' not in st.session_state or st.session_state.current_file_hash != current_file_hash:
+            # Only reset mapping state if a new file is uploaded
+            if st.session_state.current_file_hash != current_file_hash:
                 st.session_state.current_file_hash = current_file_hash
-                st.session_state.mapping_state = {
-                    'article_code': '',
-                    'barcode': '',
-                    'brand': '',
-                    'description': '',
-                    'price': ''
-                }
+                st.session_state.mapping_state = {}
             
-            # 2. Row selection
+            # Row selection
             header_row = st.number_input("Select Header Row Number", min_value=1, value=1)
             start_row = st.number_input("Start Reading Data from Row", min_value=header_row+1, value=header_row+1)
             
@@ -101,34 +93,39 @@ def render_catalog_manager():
                 else:
                     df = pd.read_excel(uploaded_file, header=header_row-1, skiprows=list(range(1, start_row)))
             
-            # 3. Column mapping section
+            # Column mapping section
             st.subheader("Map Required Columns")
             available_columns = df.columns.tolist()
             required_columns = ['article_code', 'barcode', 'brand', 'description', 'price']
             
             # Reset mapping button
             if st.button("🔄 Reset Mappings", help="Clear all column mappings"):
-                st.session_state.mapping_state = {col: '' for col in required_columns}
+                st.session_state.mapping_state = {}
                 st.warning("Column mappings have been reset.")
             
             st.info("💡 Your column mapping will be preserved until you reset it or upload a different file.")
             
             # Create mapping interface with two columns
             col1, col2 = st.columns(2)
+            
+            # Store mappings temporarily to apply all at once
+            new_mappings = {}
+            
             for idx, required_col in enumerate(required_columns):
                 with col1 if idx % 2 == 0 else col2:
-                    # Use simple key without file hash
+                    # Get current mapping for this column
+                    current_mapping = st.session_state.mapping_state.get(required_col, '')
+                    
+                    # Create selectbox with current mapping as default
                     selected = st.selectbox(
                         f"Map {required_col} to:",
                         options=[''] + available_columns,
-                        index=available_columns.index(st.session_state.mapping_state[required_col]) + 1 
-                              if st.session_state.mapping_state[required_col] in available_columns 
-                              else 0,
-                        key=f'select_{required_col}'
+                        index=available_columns.index(current_mapping) + 1 if current_mapping in available_columns else 0,
+                        key=f'select_{required_col}_{current_file_hash}'  # Use file hash in key to ensure uniqueness
                     )
                     
-                    # Update mapping state immediately
-                    st.session_state.mapping_state[required_col] = selected
+                    # Store the new mapping
+                    new_mappings[required_col] = selected
                     
                     # Show preview if mapped
                     if selected:
@@ -138,9 +135,12 @@ def render_catalog_manager():
                     else:
                         st.error(f"✗ {required_col} not mapped")
             
+            # Update session state with all new mappings at once
+            st.session_state.mapping_state.update(new_mappings)
+            
             # Show import section when all fields are mapped
             st.markdown("---")
-            all_mapped = all(st.session_state.mapping_state.values())
+            all_mapped = all(st.session_state.mapping_state.get(col, '') for col in required_columns)
             
             if all_mapped:
                 st.success("✅ All required columns are mapped!")
@@ -151,7 +151,7 @@ def render_catalog_manager():
                     if st.button("🔄 Import Data", use_container_width=True):
                         with st.spinner('Processing and importing data...'):
                             try:
-                                # Use mapping state directly
+                                # Create reverse mapping
                                 reverse_mapping = {v: k for k, v in st.session_state.mapping_state.items() if v}
                                 mapped_df = df.rename(columns=reverse_mapping)
                                 
