@@ -9,7 +9,9 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 
 def validate_price(price):
     try:
-        return float(str(price).strip()) >= 0
+        # Simple numeric conversion without any string checks
+        value = float(price)
+        return value >= 0
     except (ValueError, TypeError):
         return False
 
@@ -151,7 +153,7 @@ def render_catalog_manager():
                                 
                                 if len(valid_df) > 0:
                                     # Convert prices to float
-                                    valid_df['price'] = valid_df['price'].apply(lambda x: float(str(x).strip()))
+                                    valid_df['price'] = valid_df['price'].apply(lambda x: float(x))
                                     success, message = import_catalog_data(valid_df)
                                     if success:
                                         st.success(f"✅ Successfully imported {len(valid_df)} records")
