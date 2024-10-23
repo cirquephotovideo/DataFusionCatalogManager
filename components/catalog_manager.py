@@ -9,16 +9,11 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 
 def validate_price(price):
     try:
-        # Handle different numeric formats
-        if isinstance(price, (int, float)):
-            price_value = float(price)
-        else:
-            # Clean string input
-            price = str(price).strip()
+        # Convert any input to float
+        if isinstance(price, str):
+            # Remove currency symbols and convert commas to dots
             price = price.replace('€', '').replace('$', '').replace(',', '.').strip()
-            price_value = float(price)
-        
-        # Check if price is valid (non-negative)
+        price_value = float(price)
         return price_value >= 0
     except (ValueError, TypeError):
         return False
@@ -160,9 +155,10 @@ def render_catalog_manager():
                                 valid_df = mapped_df[valid_mask].copy()
                                 
                                 if len(valid_df) > 0:
-                                    # Format prices to proper float values
+                                    # Convert prices to float before import
                                     valid_df['price'] = valid_df['price'].apply(
                                         lambda x: float(str(x).replace('€', '').replace('$', '').replace(',', '.').strip())
+                                        if isinstance(x, str) else float(x)
                                     )
                                     success, message = import_catalog_data(valid_df)
                                     if success:
