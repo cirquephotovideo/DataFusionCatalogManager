@@ -3,7 +3,7 @@ import os
 import tempfile
 from typing import Tuple, List
 import pandas as pd
-from utils.processors import read_csv_file, process_csv, standardize_catalog_data
+from utils.processors import read_csv_file, process_file, standardize_catalog_data
 
 class FTPService:
     def __init__(self, host: str, username: str = "", password: str = "", port: int = 21):
@@ -49,13 +49,17 @@ class FTPService:
         """Download and process file from FTP server"""
         try:
             # Create temporary file
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.csv') as temp_file:
+            file_ext = os.path.splitext(remote_path)[1].lower()
+            temp_suffix = file_ext if file_ext in ['.csv', '.xlsx', '.xls'] else '.csv'
+            
+            with tempfile.NamedTemporaryFile(delete=False, suffix=temp_suffix) as temp_file:
                 # Download the file
                 self.ftp.retrbinary(f'RETR {remote_path}', temp_file.write)
                 temp_file_path = temp_file.name
 
-            # Just read the CSV file without processing
-            df, success, message = read_csv_file(temp_file_path)
+            # Process the file based on its extension
+            file_type = 'csv' if temp_suffix == '.csv' else 'excel'
+            df, success, message = process_file(temp_file_path, file_type)
             
             # Clean up temporary file
             os.unlink(temp_file_path)

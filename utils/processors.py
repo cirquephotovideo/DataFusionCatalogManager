@@ -1,6 +1,7 @@
 import pandas as pd
 from typing import List, Dict, Tuple
 import hashlib
+import io
 
 def validate_csv_columns(df: pd.DataFrame) -> Tuple[bool, List[str]]:
     """Validate required columns in CSV file"""
@@ -23,10 +24,27 @@ def read_csv_file(file) -> Tuple[pd.DataFrame, bool, str]:
     
     return pd.DataFrame(), False, "Unable to read CSV with any supported encoding"
 
-def process_csv(file, column_mapping: Dict[str, str] = None) -> Tuple[pd.DataFrame, bool, str]:
-    """Process uploaded CSV file with validation and encoding handling"""
-    # First read the CSV file
-    df, success, message = read_csv_file(file)
+def read_excel_file(file) -> Tuple[pd.DataFrame, bool, str]:
+    """Read Excel file (XLS/XLSX) without validation"""
+    try:
+        # Try reading as XLSX first
+        df = pd.read_excel(file, engine='openpyxl')
+        return df, True, "Excel file read successfully"
+    except Exception as xlsx_error:
+        try:
+            # If XLSX fails, try XLS format
+            df = pd.read_excel(file, engine='xlrd')
+            return df, True, "Excel file read successfully"
+        except Exception as xls_error:
+            return pd.DataFrame(), False, f"Error reading Excel file: {str(xlsx_error)}"
+
+def process_file(file, file_type: str, column_mapping: Dict[str, str] = None) -> Tuple[pd.DataFrame, bool, str]:
+    """Process uploaded file (CSV or Excel) with validation and encoding handling"""
+    if file_type == 'csv':
+        df, success, message = read_csv_file(file)
+    else:  # xlsx or xls
+        df, success, message = read_excel_file(file)
+        
     if not success:
         return pd.DataFrame(), False, message
     
@@ -51,7 +69,7 @@ def process_csv(file, column_mapping: Dict[str, str] = None) -> Tuple[pd.DataFra
         'price': 0.0
     }
     df = df.fillna(defaults)
-    return df, True, "CSV processed successfully"
+    return df, True, "File processed successfully"
 
 def generate_fusion_code(article_code: str, brand: str) -> str:
     """Generate unique fusion article code"""
@@ -79,3 +97,17 @@ def get_example_csv_content() -> str:
     return """article_code,barcode,brand,description,price
 ABC123,1234567890123,ExampleBrand,Product Description,99.99
 XYZ789,9876543210123,AnotherBrand,Another Product,149.99"""
+
+def get_example_excel_content() -> bytes:
+    """Generate example Excel content"""
+    df = pd.DataFrame({
+        'article_code': ['ABC123', 'XYZ789'],
+        'barcode': ['1234567890123', '9876543210123'],
+        'brand': ['ExampleBrand', 'AnotherBrand'],
+        'description': ['Product Description', 'Another Product'],
+        'price': [99.99, 149.99]
+    })
+    
+    excel_buffer = io.BytesIO()
+    df.to_excel(excel_buffer, index=False, engine='openpyxl')
+    return excel_buffer.getvalue()

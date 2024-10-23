@@ -1,43 +1,58 @@
 import streamlit as st
 import pandas as pd
 from utils.validators import validate_ean13, validate_article_code, validate_required_fields
-from utils.processors import read_csv_file, process_csv, standardize_catalog_data, get_example_csv_content
+from utils.processors import process_file, standardize_catalog_data, get_example_csv_content, get_example_excel_content
 from utils.helpers import prepare_catalog_summary
 from services.catalog_service import CatalogService
 
 def render_catalog_manager():
     st.header("Catalog Management")
     
-    # Show example CSV format
-    with st.expander("📝 View Example CSV Format"):
-        st.code(get_example_csv_content(), language='csv')
-        st.download_button(
-            "Download Example CSV",
-            get_example_csv_content(),
-            "example_catalog.csv",
-            "text/csv"
-        )
+    # Show example file formats
+    example_format = st.radio("View Example Format", ["CSV", "Excel"])
+    
+    with st.expander("📝 View Example Format"):
+        if example_format == "CSV":
+            st.code(get_example_csv_content(), language='csv')
+            st.download_button(
+                "Download Example CSV",
+                get_example_csv_content(),
+                "example_catalog.csv",
+                "text/csv"
+            )
+        else:
+            st.download_button(
+                "Download Example Excel",
+                get_example_excel_content(),
+                "example_catalog.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
     
     # File upload
-    uploaded_file = st.file_uploader("Upload Catalog CSV", type=['csv'])
+    uploaded_file = st.file_uploader("Upload Catalog File", type=['csv', 'xlsx', 'xls'])
     
     if uploaded_file is not None:
-        # First just read the CSV to get columns
-        df, success, message = read_csv_file(uploaded_file)
+        file_type = uploaded_file.name.split('.')[-1].lower()
+        
+        # First just read the file to get columns
+        if file_type == 'csv':
+            df, success, message = process_file(uploaded_file, 'csv')
+        else:
+            df, success, message = process_file(uploaded_file, 'excel')
         
         if not success:
             st.error(message)
         else:
             # Show mapping interface
             st.subheader("Map Your Columns")
-            csv_columns = df.columns.tolist()
+            file_columns = df.columns.tolist()
             mapping = {}
             required_columns = ['article_code', 'barcode', 'brand', 'description', 'price']
             
             for required_col in required_columns:
                 mapping[required_col] = st.selectbox(
                     f"Map {required_col} to:",
-                    options=[''] + csv_columns,
+                    options=[''] + file_columns,
                     key=f"map_{required_col}"
                 )
             
@@ -47,10 +62,10 @@ def render_catalog_manager():
             
             # Only proceed if user has mapped all required columns
             if st.button("Apply Mapping") and all(mapping.values()):
-                # Create reverse mapping and process CSV
+                # Create reverse mapping and process file
                 reverse_mapping = {v: k for k, v in mapping.items()}
                 uploaded_file.seek(0)  # Reset file pointer
-                df, success, message = process_csv(uploaded_file, reverse_mapping)
+                df, success, message = process_file(uploaded_file, file_type, reverse_mapping)
                 
                 if not success:
                     st.error(message)
