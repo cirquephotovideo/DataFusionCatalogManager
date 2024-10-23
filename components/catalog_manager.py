@@ -9,13 +9,15 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 
 def validate_price(value):
     try:
-        # Convert value to string and clean it
+        if isinstance(value, (int, float)):
+            return float(value) >= 0
+            
         if isinstance(value, str):
-            # Remove currency symbols and spaces, replace comma with dot
-            value = value.replace('€', '').replace('$', '').replace(',', '.').strip()
-        # Convert to float
-        price = float(value)
-        return price >= 0
+            # Remove currency symbols and convert commas to dots
+            cleaned = value.replace('€', '').replace('$', '').replace(',', '.').strip()
+            return float(cleaned) >= 0
+            
+        return False
     except (ValueError, TypeError):
         return False
 
@@ -156,7 +158,7 @@ def render_catalog_manager():
                                 valid_df = mapped_df[valid_mask].copy()
                                 
                                 if len(valid_df) > 0:
-                                    # Convert prices to float before import
+                                    # Convert prices to float
                                     valid_df['price'] = valid_df['price'].apply(
                                         lambda x: float(str(x).replace('€', '').replace('$', '').replace(',', '.').strip())
                                         if isinstance(x, str) else float(x)
