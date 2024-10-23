@@ -51,6 +51,17 @@ def render_catalog_manager():
             # Generate unique hash for the file content
             file_hash = generate_file_hash(preview_df)
             
+            # Initialize top-level mapping state
+            if 'file_hash' not in st.session_state:
+                st.session_state['file_hash'] = file_hash
+            if 'column_mappings' not in st.session_state:
+                st.session_state['column_mappings'] = {}
+            if file_hash not in st.session_state['column_mappings']:
+                st.session_state['column_mappings'][file_hash] = {}
+            
+            # Store mappings in a dedicated state variable
+            mappings = st.session_state['column_mappings'][file_hash]
+            
             # 2. Row selection
             header_row = st.number_input("Select Header Row Number", min_value=1, value=1)
             start_row = st.number_input("Start Reading Data from Row", min_value=header_row+1, value=header_row+1)
@@ -65,68 +76,57 @@ def render_catalog_manager():
                 else:
                     df = pd.read_excel(uploaded_file, header=header_row-1, skiprows=list(range(1, start_row)))
                 
-                # Initialize mapping in session state if not exists
-                mapping_key = f"mapping_{file_hash}"
-                if mapping_key not in st.session_state:
-                    st.session_state[mapping_key] = {}
-                
                 # 3. Show column mapping interface
                 st.subheader("Map Required Columns")
                 available_columns = df.columns.tolist()
                 required_columns = ['article_code', 'barcode', 'brand', 'description', 'price']
                 
-                # Reset mapping button with confirmation
-                col1, col2 = st.columns([1, 4])
-                with col1:
-                    if st.button("Reset Mapping"):
-                        if st.session_state[mapping_key]:
-                            st.session_state[mapping_key] = {}
-                            st.warning("Column mapping has been reset.")
+                # Reset mapping button
+                if st.button("Reset Mapping", key="reset_mapping"):
+                    st.session_state['column_mappings'][file_hash] = {}
+                    mappings = {}
+                    st.warning("Column mapping has been reset.")
+                    st.experimental_rerun()
                 
-                with col2:
-                    st.info("💡 Your column mapping will be preserved until you reset it or upload a different file.")
+                st.info("💡 Your column mapping will be preserved until you reset it or upload a different file.")
                 
-                # Create mapping interface with column layout
+                # Create mapping interface
                 col1, col2 = st.columns(2)
-                unmapped_columns = []
-                
                 for idx, required_col in enumerate(required_columns):
                     with col1 if idx % 2 == 0 else col2:
-                        # Get current mapping value from session state
-                        current_value = st.session_state[mapping_key].get(required_col, '')
+                        # Use a unique key combining file hash and column
+                        mapping_key = f"{file_hash}_{required_col}"
                         
-                        # Create selectbox with unique key
+                        # Initialize selectbox with current value if it exists
+                        current_value = mappings.get(required_col, '')
+                        current_index = 0 if not current_value else available_columns.index(current_value) + 1
+                        
                         selected_col = st.selectbox(
                             f"Map {required_col} to:",
                             options=[''] + available_columns,
-                            index=0 if not current_value else available_columns.index(current_value) + 1,
-                            key=f"map_{required_col}_{file_hash}"
+                            index=current_index,
+                            key=mapping_key
                         )
                         
-                        # Update mapping in session state
+                        # Update mapping in session state immediately
                         if selected_col:
-                            st.session_state[mapping_key][required_col] = selected_col
+                            mappings[required_col] = selected_col
                             st.success(f"✓ {required_col} mapped to {selected_col}")
-                            
-                            # Show data preview in expander
                             with st.expander(f"Preview {required_col} data"):
                                 st.dataframe(df[selected_col].head(3))
                         else:
-                            unmapped_columns.append(required_col)
-                            if required_col in st.session_state[mapping_key]:
-                                del st.session_state[mapping_key][required_col]
+                            if required_col in mappings:
+                                del mappings[required_col]
                             st.error(f"✗ {required_col} not mapped")
                 
-                # Show import section immediately after mapping
+                # Show import section when all fields are mapped
                 st.markdown("---")
-                if unmapped_columns:
-                    st.warning(f"Please map the following columns to proceed: {', '.join(unmapped_columns)}")
-                else:
+                all_mapped = all(required_col in mappings for required_col in required_columns)
+                if all_mapped:
                     st.success("✅ All required columns are mapped!")
-                    if st.button("Process and Import Data", key=f"import_button_{file_hash}"):
-                        # Create reverse mapping and process
-                        mapping = st.session_state[mapping_key]
-                        reverse_mapping = {v: k for k, v in mapping.items()}
+                    if st.button("Import Data", key=f"import_button_{file_hash}"):
+                        # Process the import
+                        reverse_mapping = {v: k for k, v in mappings.items()}
                         df = df.rename(columns=reverse_mapping)
                         
                         # Data validation
@@ -155,6 +155,9 @@ def render_catalog_manager():
                                 st.error(message)
                         else:
                             st.warning("No valid records to import")
-                            
+                else:
+                    unmapped = [col for col in required_columns if col not in mappings]
+                    st.warning(f"Please map the following columns to proceed: {', '.join(unmapped)}")
+                    
         except Exception as e:
             st.error(f"Error processing file: {str(e)}")
