@@ -1,0 +1,144 @@
+Script de Démonstration Technique - Data Fusion Catalog Manager
+
+1. Démonstration du Site Public (3 minutes)
+----------------------------------------
+URL: http://localhost:8532
+
+A. Page d'Accueil
+- "Voici la page d'accueil de notre application. Comme vous pouvez le voir, nous présentons nos trois formules d'abonnement."
+- "La formule d'essai gratuit permet de tester toutes les fonctionnalités pendant 10 jours"
+- "Le plan Basic à 500€ est idéal pour les catalogues jusqu'à 5000 produits"
+- "Le plan Premium à 1000€ offre une capacité de 10000 produits avec support prioritaire"
+
+B. Processus d'Inscription
+- "Commençons par créer un compte..."
+- Démonstration du formulaire d'inscription
+- Explication du processus de validation
+- Configuration initiale du compte
+
+2. Interface Administrateur (5 minutes)
+-----------------------------------
+URL: http://localhost:8531
+
+A. Tableau de Bord Principal
+- "Voici l'interface administrateur complète"
+- Présentation des métriques principales
+- Navigation dans les différentes sections
+
+B. Gestion des Catalogues
+- Import de produits depuis différentes sources
+- "Regardons comment importer un catalogue depuis Prestashop..."
+- Démonstration de la synchronisation
+- Vérification des résultats
+
+C. Enrichissement des Produits
+- "Une fonctionnalité clé est l'enrichissement automatique par IA"
+- Sélection d'un produit exemple
+- Lancement de l'enrichissement
+- Analyse des résultats
+
+D. Surveillance des Prix
+- "Passons à la surveillance des prix concurrents"
+- Configuration d'une règle de scraping
+- Démonstration du scraping en direct
+- Analyse des résultats
+
+3. Fonctionnalités Avancées (5 minutes)
+------------------------------------
+
+A. Intégrations Multi-plateformes
+- Configuration Odoo
+  * "Commençons par connecter Odoo..."
+  * Configuration des paramètres
+  * Test de la connexion
+  * Vérification de la synchronisation
+
+- Configuration Prestashop
+  * Paramètres de connexion
+  * Mapping des catégories
+  * Test de synchronisation
+
+- Configuration WooCommerce
+  * API credentials
+  * Options de synchronisation
+  * Démonstration de la synchronisation
+
+B. Gestion des Prix
+- "Voyons maintenant la gestion avancée des prix"
+- Création de règles de prix
+- Synchronisation multi-plateforme
+- Historique des modifications
+
+C. Monitoring et Rapports
+- "L'aspect monitoring est crucial..."
+- Vue des synchronisations en cours
+- Historique des opérations
+- Génération de rapports
+
+4. API et Intégrations (3 minutes)
+-------------------------------
+URL: http://localhost:8530/docs
+
+A. Documentation API
+- "Notre API REST complète..."
+- Présentation des endpoints principaux
+- Exemples d'utilisation
+- Sécurité et authentification
+
+B. Webhooks
+- Configuration des webhooks
+- Exemples d'intégration
+- Gestion des événements
+
+5. Points Techniques Importants (4 minutes)
+---------------------------------------
+
+A. Architecture
+- "Notre architecture est conçue pour la scalabilité..."
+- Séparation frontend/backend
+- Base de données optimisée
+- Gestion des sessions
+
+B. Sécurité
+- Authentification sécurisée
+- Chiffrement des données
+- Gestion des permissions
+- Audit logs
+
+C. Performance
+- Optimisation des requêtes
+- Mise en cache
+- Gestion des ressources
+- Monitoring système
+
+Conclusion et Questions (2 minutes)
+--------------------------------
+- Récapitulatif des points clés
+- Avantages concurrentiels
+- Prochaines évolutions prévues
+- Session de questions/réponses
+
+Notes pour la Démonstration
+-------------------------
+1. Préparer des données de test réalistes
+2. Avoir plusieurs exemples de catalogues
+3. Préparer des scénarios de démonstration
+4. Avoir un plan B en cas de problème technique
+5. Prévoir des captures d'écran de secours
+
+Points à Souligner
+----------------
+- Facilité d'utilisation
+- Automatisation poussée
+- Flexibilité des intégrations
+- Robustesse du système
+- Support et documentation
+- Évolutivité de la solution
+
+Matériel Nécessaire
+-----------------
+1. Environnement de démo complet
+2. Connexion Internet stable
+3. Accès aux différentes plateformes
+4. Comptes de test configurés
+5. Exemples de cas d'utilisation réels

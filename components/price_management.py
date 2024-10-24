@@ -1,211 +1,272 @@
 import streamlit as st
-from services.competitor_service import CompetitorService
-from services.catalog_service import CatalogService
+from components.web_scraper import WebScraper
 import pandas as pd
 from datetime import datetime
+import json
 import asyncio
 
 def render_price_scraping():
+    """Render price scraping interface with web scraper integration"""
     st.title("Price Scraping")
-    
-    # Initialize competitor service
-    if 'competitor_service' not in st.session_state:
-        st.session_state.competitor_service = CompetitorService()
 
-    # Competitor configuration section
-    st.header("Competitor Sites")
-    
-    # Add new competitor
-    with st.form("add_competitor"):
-        st.subheader("Add New Competitor")
-        col1, col2 = st.columns(2)
-        with col1:
-            name = st.text_input("Competitor Name")
-            base_url = st.text_input("Base URL")
-        with col2:
-            price_selector = st.text_input("Price Selector (CSS)")
-            st.info("Example: .product-price, #price, .price-value")
+    # Initialize web scraper if not exists
+    if 'web_scraper' not in st.session_state:
+        st.session_state.web_scraper = WebScraper()
+
+    # Initialize saved rules if not exists
+    if 'saved_scraping_rules' not in st.session_state:
+        st.session_state.saved_scraping_rules = {}
+
+    # Tabs for different scraping methods
+    tab1, tab2, tab3 = st.tabs(["Quick Scrape", "Advanced Scraping", "Saved Rules"])
+
+    with tab1:
+        st.subheader("Quick Price Scraping")
         
-        if st.form_submit_button("Add Competitor"):
-            if name and base_url and price_selector:
-                if st.session_state.competitor_service.add_competitor(name, base_url, price_selector):
-                    st.success(f"Added competitor: {name}")
-                else:
-                    st.error("Failed to add competitor")
-            else:
-                st.error("All fields are required")
-
-    # List existing competitors
-    st.subheader("Configured Competitors")
-    competitors = st.session_state.competitor_service.get_competitors()
-    
-    if competitors:
-        for name, config in competitors.items():
-            col1, col2, col3 = st.columns([2, 2, 1])
-            with col1:
-                st.write(f"**{name}**")
-            with col2:
-                st.write(config['url'])
-            with col3:
-                if st.button("Remove", key=f"remove_{name}"):
-                    if st.session_state.competitor_service.remove_competitor(name):
-                        st.success(f"Removed competitor: {name}")
-                        st.rerun()
-    else:
-        st.info("No competitors configured yet")
-
-    # Schedule scraping
-    st.markdown("---")
-    st.header("Schedule Price Scraping")
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        schedule_enabled = st.checkbox("Enable Scheduled Scraping")
-        if schedule_enabled:
-            schedule_time = st.time_input("Daily Scraping Time")
-            if st.button("Save Schedule"):
-                st.success("Scraping schedule saved")
-    
-    with col2:
-        if st.button("Run Scraping Now", use_container_width=True):
-            with st.spinner("Scraping competitor prices..."):
-                products = CatalogService.get_catalogs()
-                progress_bar = st.progress(0)
-                results = []
-                
-                for i, product in enumerate(products):
-                    # Update progress
-                    progress = (i + 1) / len(products)
-                    progress_bar.progress(progress)
+        # URL input
+        url = st.text_input("Enter competitor URL")
+        
+        # Multi-page settings
+        max_pages = st.number_input("Maximum pages to scrape", min_value=1, value=5, key="quick_max_pages")
+        
+        if url:
+            # Default fields for price scraping
+            default_fields = ["name", "price", "sku", "availability"]
+            
+            if st.button("Quick Scrape", type="primary"):
+                with st.spinner("Analyzing and scraping..."):
+                    # Use the web scraper with default settings
+                    model_provider = "ollama" if "mistral" in st.session_state.web_scraper.get_available_models()["Ollama"] else "openai"
+                    model_name = "mistral" if model_provider == "ollama" else "gpt-3.5-turbo"
                     
-                    # Get competitor prices
-                    prices = asyncio.run(st.session_state.competitor_service.get_competitor_prices(product['reference']))
-                    if prices:
-                        results.append({
-                            'Product': product.get('name', 'Unknown'),
-                            'Our Price': product.get('price', 0),
-                            **prices
-                        })
-                
+                    # Generate rules
+                    rules = asyncio.run(
+                        st.session_state.web_scraper.generate_scraping_rules(
+                            url,
+                            default_fields,
+                            model_provider,
+                            model_name
+                        )
+                    )
+                    
+                    if rules and "selectors" in rules:
+                        # Execute scraping
+                        results = st.session_state.web_scraper.execute_scraping(url, rules, max_pages)
+                        if results:
+                            # Display results
+                            df = pd.DataFrame(results)
+                            st.success("Scraping completed!")
+                            st.dataframe(df)
+                            
+                            # Save results
+                            st.session_state.latest_price_scraping = {
+                                'url': url,
+                                'timestamp': datetime.now().isoformat(),
+                                'results': results,
+                                'rules': rules
+                            }
+                            
+                            # Download option
+                            csv = df.to_csv(index=False)
+                            st.download_button(
+                                "Download Results (CSV)",
+                                csv,
+                                "price_scraping_results.csv",
+                                "text/csv",
+                                key='download-quick-csv'
+                            )
+                            
+                            # Save rules option
+                            if st.button("Save Rules for Future Use", key="save_quick_rules"):
+                                st.session_state.saved_scraping_rules[url] = rules
+                                st.success("Rules saved successfully!")
+
+    with tab2:
+        st.subheader("Advanced Price Scraping")
+        
+        # Model selection
+        st.subheader("Select AI Model")
+        models = st.session_state.web_scraper.get_available_models()
+        
+        model_provider = st.selectbox(
+            "AI Provider",
+            options=list(models.keys()),
+            key="advanced_provider"
+        )
+        
+        model_name = st.selectbox(
+            "Model",
+            options=models[model_provider],
+            key="advanced_model"
+        )
+
+        # URL input
+        url = st.text_input("URL to scrape", key="advanced_url")
+        
+        # Multi-page settings
+        max_pages = st.number_input("Maximum pages to scrape", min_value=1, value=5, key="advanced_max_pages")
+
+        # Fields to extract
+        st.subheader("Fields to Extract:")
+        if 'advanced_scraping_fields' not in st.session_state:
+            st.session_state.advanced_scraping_fields = ["name", "price", "sku", "availability"]
+
+        # Add new field
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            new_field = st.text_input("Add field", key="advanced_new_field")
+        with col2:
+            if st.button("Add Field", key="advanced_add"):
+                if new_field and new_field not in st.session_state.advanced_scraping_fields:
+                    st.session_state.advanced_scraping_fields.append(new_field)
+                    st.rerun()
+
+        # Display and manage fields
+        st.write("Current fields:")
+        for field in st.session_state.advanced_scraping_fields:
+            col1, col2 = st.columns([4, 1])
+            with col1:
+                st.text(field)
+            with col2:
+                if st.button("❌", key=f"advanced_remove_{field}"):
+                    st.session_state.advanced_scraping_fields.remove(field)
+                    st.rerun()
+
+        # Action buttons
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            analyze_button = st.button("1. Analyze URL", key="advanced_analyze", use_container_width=True)
+        with col2:
+            generate_button = st.button("2. Generate Rules", key="advanced_generate", use_container_width=True)
+        with col3:
+            start_button = st.button("3. Start Scraping", key="advanced_start", type="primary", use_container_width=True)
+
+        # Analyze URL
+        if url and analyze_button:
+            with st.spinner("Analyzing URL..."):
+                analysis = asyncio.run(
+                    st.session_state.web_scraper.analyze_url(
+                        url,
+                        model_provider,
+                        model_name
+                    )
+                )
+                if analysis and "suggested_fields" in analysis:
+                    st.subheader("Suggested Fields")
+                    for field in analysis["suggested_fields"]:
+                        if st.button(
+                            f"Add {field['name']} ({field['importance']})",
+                            key=f"advanced_add_{field['name']}",
+                            help=field['description']
+                        ):
+                            if field['name'] not in st.session_state.advanced_scraping_fields:
+                                st.session_state.advanced_scraping_fields.append(field['name'])
+                                st.rerun()
+
+        # Generate scraping rules
+        if url and st.session_state.advanced_scraping_fields and generate_button:
+            with st.spinner("Generating scraping rules..."):
+                rules = asyncio.run(
+                    st.session_state.web_scraper.generate_scraping_rules(
+                        url,
+                        st.session_state.advanced_scraping_fields,
+                        model_provider,
+                        model_name
+                    )
+                )
+                if rules and "selectors" in rules:
+                    st.subheader("Generated Scraping Rules")
+                    st.json(rules)
+                    st.session_state.advanced_scraping_rules = rules
+                    
+                    # Save rules button
+                    if st.button("Save Rules", key="save_advanced_rules"):
+                        st.session_state.saved_scraping_rules[url] = rules
+                        st.success("Rules saved successfully!")
+
+        # Execute scraping
+        if url and 'advanced_scraping_rules' in st.session_state and start_button:
+            with st.spinner("Scraping data..."):
+                results = st.session_state.web_scraper.execute_scraping(
+                    url,
+                    st.session_state.advanced_scraping_rules,
+                    max_pages
+                )
                 if results:
-                    st.success(f"Scraped prices for {len(results)} products")
-                    st.dataframe(pd.DataFrame(results))
-                else:
-                    st.warning("No prices found")
+                    st.success("Scraping completed!")
+                    
+                    # Convert results to DataFrame
+                    df = pd.DataFrame(results)
+                    
+                    # Display results
+                    st.subheader("Scraping Results")
+                    st.dataframe(df)
+                    
+                    # Save results
+                    st.session_state.latest_price_scraping = {
+                        'url': url,
+                        'timestamp': datetime.now().isoformat(),
+                        'results': results,
+                        'rules': st.session_state.advanced_scraping_rules
+                    }
+                    
+                    # Download button
+                    csv = df.to_csv(index=False)
+                    st.download_button(
+                        "Download Results (CSV)",
+                        csv,
+                        "advanced_price_scraping_results.csv",
+                        "text/csv",
+                        key='download-advanced-csv'
+                    )
+
+    with tab3:
+        st.subheader("Saved Scraping Rules")
+        if st.session_state.saved_scraping_rules:
+            for saved_url, rules in st.session_state.saved_scraping_rules.items():
+                with st.expander(saved_url):
+                    st.json(rules)
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        if st.button("Use These Rules", key=f"use_{saved_url}"):
+                            st.session_state.advanced_scraping_rules = rules
+                            st.success("Rules loaded! Go to Advanced Scraping tab to use them.")
+                    with col2:
+                        if st.button("Delete Rules", key=f"delete_{saved_url}"):
+                            del st.session_state.saved_scraping_rules[saved_url]
+                            st.rerun()
+        else:
+            st.info("No saved rules yet. Save rules from Quick Scrape or Advanced Scraping to see them here.")
 
 def render_price_matching():
+    """Render price matching interface"""
     st.title("Price Matching")
     
-    # Initialize services
-    if 'competitor_service' not in st.session_state:
-        st.session_state.competitor_service = CompetitorService()
-
-    # Get products
-    products = CatalogService.get_catalogs()
-    if not products:
-        st.warning("No products found in catalog")
-        return
-
-    # Filter and search
-    search = st.text_input("Search products")
-    
-    filtered_products = products
-    if search:
-        search = search.lower()
-        filtered_products = [p for p in products if 
-            search in str(p.get('name', '')).lower() or
-            search in str(p.get('reference', '')).lower() or
-            search in str(p.get('article_code', '')).lower()]
-
-    # Display products with competitor prices
-    for product in filtered_products:
-        with st.expander(f"{product.get('name', 'Unknown Product')} ({product.get('reference', 'No Ref')})"):
-            col1, col2 = st.columns([2, 1])
-            
-            with col1:
-                st.write("**Our Price:**", f"€{product.get('price', 0):.2f}")
-                if product.get('purchase_price'):
-                    margin_info = st.session_state.competitor_service.calculate_margin(
-                        float(product['purchase_price']),
-                        float(product.get('price', 0))
-                    )
-                    margin_color = "green" if margin_info['is_profitable'] else "red"
-                    st.markdown(f"**Margin:** <span style='color:{margin_color}'>{margin_info['margin_percentage']:.1f}%</span>", unsafe_allow_html=True)
-            
-            with col2:
-                if st.button("Fetch Competitor Prices", key=f"fetch_{product['id']}"):
-                    with st.spinner("Fetching prices..."):
-                        prices = asyncio.run(st.session_state.competitor_service.get_competitor_prices(product['reference']))
-                        if prices:
-                            st.write("**Competitor Prices:**")
-                            for competitor, price in prices.items():
-                                st.write(f"{competitor}: €{price:.2f}")
-                            
-                            # Price validation
-                            validation = st.session_state.competitor_service.validate_pricing_strategy(
-                                float(product.get('price', 0)),
-                                prices
-                            )
-                            if validation['messages']:
-                                for msg in validation['messages']:
-                                    st.warning(msg)
-                        else:
-                            st.info("No competitor prices found")
+    # Show latest scraping results if available
+    if 'latest_price_scraping' in st.session_state:
+        st.subheader("Latest Scraped Data")
+        scraping = st.session_state.latest_price_scraping
+        st.write(f"Source: {scraping['url']}")
+        st.write(f"Scraped at: {scraping['timestamp']}")
+        
+        df = pd.DataFrame(scraping['results'])
+        st.dataframe(df)
+        
+        # Match prices with catalog
+        if st.button("Match Prices with Catalog"):
+            with st.spinner("Matching prices..."):
+                # TODO: Implement price matching logic
+                st.info("Price matching functionality coming soon!")
 
 def render_competitor_analysis():
+    """Render competitor analysis interface"""
     st.title("Competitor Analysis")
     
-    # Initialize competitor service
-    if 'competitor_service' not in st.session_state:
-        st.session_state.competitor_service = CompetitorService()
-
-    # Get all price data
-    products = CatalogService.get_catalogs()
-    if not products:
-        st.warning("No products found in catalog")
-        return
-
-    # Fetch prices button
-    if st.button("Fetch All Competitor Prices", use_container_width=True):
-        with st.spinner("Fetching competitor prices..."):
-            progress_bar = st.progress(0)
-            price_data = []
-            
-            for i, product in enumerate(products):
-                # Update progress
-                progress = (i + 1) / len(products)
-                progress_bar.progress(progress)
-                
-                if product.get('price'):
-                    prices = asyncio.run(st.session_state.competitor_service.get_competitor_prices(product['reference']))
-                    if prices:
-                        price_data.append({
-                            'Product': product.get('name', 'Unknown'),
-                            'Our Price': product['price'],
-                            **prices
-                        })
-
-            if price_data:
-                # Convert to DataFrame for analysis
-                df = pd.DataFrame(price_data)
-                
-                # Overall statistics
-                st.header("Price Statistics")
-                st.write("Average prices by seller:")
-                st.write(df.mean().round(2))
-                
-                # Price difference analysis
-                st.header("Price Comparison")
-                competitors = df.columns[2:]  # Skip Product and Our Price columns
-                for competitor in competitors:
-                    diff = ((df[competitor] - df['Our Price']) / df['Our Price'] * 100).mean()
-                    if diff > 0:
-                        st.write(f"We are {abs(diff):.1f}% cheaper than {competitor}")
-                    else:
-                        st.write(f"We are {abs(diff):.1f}% more expensive than {competitor}")
-                
-                # Detailed comparison table
-                st.header("Detailed Comparison")
-                st.dataframe(df)
-            else:
-                st.info("No competitor price data available for analysis")
+    # Show saved scraping data
+    if 'saved_scraping_rules' in st.session_state:
+        st.subheader("Saved Competitor URLs")
+        for url in st.session_state.saved_scraping_rules.keys():
+            st.write(url)
+            if st.button("Analyze", key=f"analyze_{url}"):
+                # TODO: Implement competitor analysis logic
+                st.info("Competitor analysis functionality coming soon!")

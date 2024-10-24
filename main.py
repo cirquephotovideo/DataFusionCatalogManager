@@ -8,6 +8,8 @@ from components.manufacturer_manager import render_manufacturer_manager
 from components.ftp_manager import render_ftp_manager
 from components.price_management import render_price_scraping, render_price_matching, render_competitor_analysis
 from components.ai_settings import render_ai_settings
+from components.web_scraper import render_web_scraper
+from components.subscription_manager import render_subscription_manager
 
 st.set_page_config(
     page_title="Data Fusion Catalog Manager",
@@ -29,7 +31,7 @@ menu_items = {
     },
     "Price Management": {
         "icon": "💰",
-        "pages": ["Price Scraping", "Price Matching", "Competitor Analysis"]
+        "pages": ["Price Scraping", "Price Matching", "Competitor Analysis", "Web Scraper"]
     },
     "Sync & Integration": {
         "icon": "🔄",
@@ -38,12 +40,20 @@ menu_items = {
     "Configuration": {
         "icon": "⚙️",
         "pages": ["Manufacturer Manager", "User Management", "Change Password", "AI Settings"]
+    },
+    "Administration": {
+        "icon": "👑",
+        "pages": ["Subscription Manager"]
     }
 }
 
 # Create expandable sections for each menu category
 selected_page = None
 for category, details in menu_items.items():
+    # Only show Administration menu to admin users
+    if category == "Administration" and user_info["role"] != "admin":
+        continue
+        
     with st.sidebar.expander(f"{details['icon']} {category}", expanded=True):
         for page in details['pages']:
             if st.button(page, key=f"nav_{page}", use_container_width=True):
@@ -78,6 +88,8 @@ elif current_page == "Price Matching":
     render_price_matching()
 elif current_page == "Competitor Analysis":
     render_competitor_analysis()
+elif current_page == "Web Scraper":
+    render_web_scraper()
 elif current_page == "Sync Scheduler":
     render_sync_scheduler()
 elif current_page == "FTP Manager":
@@ -94,6 +106,11 @@ elif current_page == "Change Password":
 elif current_page == "AI Settings":
     if user_info["role"] == "admin":
         render_ai_settings()
+    else:
+        st.error("Access denied. Admin privileges required.")
+elif current_page == "Subscription Manager":
+    if user_info["role"] == "admin":
+        render_subscription_manager()
     else:
         st.error("Access denied. Admin privileges required.")
 

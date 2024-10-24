@@ -1,13 +1,16 @@
 import streamlit as st
 from services.ai_service import AIService
+from services.ollama_service import OllamaService
 
 def render_ai_settings():
     """Render AI configuration settings"""
     st.title("AI Settings")
 
-    # Initialize AI service if not exists
+    # Initialize services
     if 'ai_service' not in st.session_state:
         st.session_state.ai_service = AIService()
+    if 'ollama_service' not in st.session_state:
+        st.session_state.ollama_service = OllamaService()
 
     # Get current config
     current_config = st.session_state.ai_service.get_active_config()
@@ -15,15 +18,48 @@ def render_ai_settings():
     # Provider selection
     provider = st.selectbox(
         "AI Provider",
-        options=["openai", "gemini"],
-        index=0 if not current_config else 0 if current_config['provider'] == 'openai' else 1
+        options=["openai", "gemini", "ollama"],
+        index=0 if not current_config else 
+              0 if current_config['provider'] == 'openai' else 
+              1 if current_config['provider'] == 'gemini' else 2
     )
 
-    # API Key input
-    api_key = st.text_input("API Key", type="password")
+    # API Key input (not needed for Ollama)
+    if provider != "ollama":
+        api_key = st.text_input("API Key", type="password")
+    else:
+        api_key = None
+        # Ollama model management
+        st.subheader("Ollama Models")
+        available_models = st.session_state.ollama_service.list_models()
+        
+        # Model installation
+        new_model = st.text_input("Install new model (e.g., llama2, mistral, codellama)")
+        if st.button("Install Model"):
+            with st.spinner(f"Installing {new_model}..."):
+                success = st.session_state.ollama_service.pull_model(new_model)
+                if success:
+                    st.success(f"Successfully installed {new_model}")
+                    st.rerun()
+                else:
+                    st.error(f"Failed to install {new_model}")
+        
+        # Display installed models
+        if available_models:
+            st.write("Installed models:")
+            for model in available_models:
+                st.code(model)
+        else:
+            st.info("No Ollama models installed. Install a model to get started.")
 
     # Model selection based on provider
-    available_models = st.session_state.ai_service.get_available_models(provider)
+    if provider == "ollama":
+        available_models = st.session_state.ollama_service.list_models()
+        if not available_models:
+            available_models = ["mistral"]  # Default model
+    else:
+        available_models = st.session_state.ai_service.get_available_models(provider)
+    
     model = st.selectbox(
         "Model",
         options=available_models,
@@ -76,7 +112,7 @@ def render_ai_settings():
 
     # Save button
     if st.button("Save Configuration"):
-        if not api_key and not current_config:
+        if not api_key and not current_config and provider != "ollama":
             st.error("API Key is required")
             return
 

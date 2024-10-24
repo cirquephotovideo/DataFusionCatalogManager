@@ -1,0 +1,172 @@
+Guide d'Installation et Démarrage Rapide - Data Fusion Catalog Manager
+
+1. Prérequis
+-----------
+- Python 3.12 ou supérieur
+- pip (gestionnaire de paquets Python)
+- Git
+- SQLite
+
+2. Installation
+-------------
+```bash
+# Cloner le repository
+git clone [URL_DU_REPO]
+cd DataFusionCatalogManager
+
+# Créer un environnement virtuel
+python -m venv venv
+
+# Activer l'environnement virtuel
+# Sur Windows:
+venv\Scripts\activate
+# Sur macOS/Linux:
+source venv/bin/activate
+
+# Installer les dépendances
+pip install -r requirements.txt
+```
+
+3. Configuration
+--------------
+A. Configuration de la Base de Données
+```bash
+# La base de données SQLite sera créée automatiquement au premier lancement
+```
+
+B. Configuration de Stripe (Optionnel)
+- Créer un compte Stripe
+- Copier les clés API dans .streamlit/secrets.toml :
+```toml
+[stripe]
+secret_key = "sk_test_..."
+webhook_secret = "whsec_..."
+```
+
+C. Configuration des Plateformes E-commerce
+- Odoo:
+```toml
+[odoo]
+url = "https://votre-instance-odoo.com"
+db = "nom_base_de_donnees"
+username = "admin"
+password = "votre_mot_de_passe"
+```
+
+- Prestashop:
+```toml
+[prestashop]
+url = "https://votre-boutique-prestashop.com"
+api_key = "votre_cle_api"
+```
+
+- WooCommerce:
+```toml
+[woocommerce]
+url = "https://votre-site-woocommerce.com"
+consumer_key = "votre_cle"
+consumer_secret = "votre_secret"
+```
+
+4. Démarrage des Services
+-----------------------
+A. Démarrer le Backend API
+```bash
+# Dans un premier terminal
+cd DataFusionCatalogManager
+source venv/bin/activate
+PYTHONPATH=/chemin/vers/DataFusionCatalogManager uvicorn api.subscription_api:app --host 0.0.0.0 --port 8530
+```
+
+B. Démarrer l'Interface Admin
+```bash
+# Dans un deuxième terminal
+cd DataFusionCatalogManager
+source venv/bin/activate
+streamlit run main.py --server.port 8531
+```
+
+C. Démarrer le Site Public
+```bash
+# Dans un troisième terminal
+cd DataFusionCatalogManager
+source venv/bin/activate
+streamlit run frontend_app.py --server.port 8532
+```
+
+5. Accès aux Interfaces
+---------------------
+- Backend API: http://localhost:8530/docs
+- Interface Admin: http://localhost:8531
+- Site Public: http://localhost:8532
+
+6. Création du Compte Admin Initial
+--------------------------------
+```bash
+# Utiliser l'interface admin pour créer le premier compte
+URL: http://localhost:8531
+Email: admin@example.com
+Mot de passe: admin123
+```
+
+7. Vérification du Système
+------------------------
+A. Tests de Base
+- Vérifier l'accès à toutes les interfaces
+- Tester la création de compte
+- Vérifier la connexion admin
+
+B. Tests des Intégrations
+- Tester la connexion Odoo
+- Vérifier l'API Prestashop
+- Valider WooCommerce
+
+8. Résolution des Problèmes Courants
+---------------------------------
+A. Problèmes de Port
+```bash
+# Si un port est déjà utilisé, essayer un autre port
+streamlit run main.py --server.port 8541
+```
+
+B. Problèmes de Base de Données
+```bash
+# Réinitialiser la base de données
+rm catalog.db
+# Redémarrer l'application
+```
+
+C. Problèmes de Dépendances
+```bash
+# Mettre à jour toutes les dépendances
+pip install -r requirements.txt --upgrade
+```
+
+9. Maintenance
+------------
+A. Sauvegardes
+```bash
+# Sauvegarder la base de données
+cp catalog.db catalog.db.backup
+```
+
+B. Mises à Jour
+```bash
+# Mettre à jour le code
+git pull
+pip install -r requirements.txt
+```
+
+10. Support et Documentation
+-------------------------
+- Documentation API: http://localhost:8530/docs
+- Wiki: [URL_DU_WIKI]
+- Support: support@datafusion.com
+
+Notes Importantes
+---------------
+1. Toujours utiliser un environnement virtuel
+2. Sauvegarder régulièrement la base de données
+3. Maintenir les configurations à jour
+4. Surveiller les logs pour les erreurs
+5. Vérifier régulièrement les mises à jour

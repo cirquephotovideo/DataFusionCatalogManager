@@ -1,0 +1,211 @@
+Guide de Dépannage Rapide - Data Fusion Catalog Manager
+
+1. Problèmes de Connexion
+------------------------
+A. L'interface admin ne se charge pas
+- Vérifier que le service est lancé sur le bon port
+- Vérifier les logs dans le terminal
+- Solution: 
+```bash
+pkill -f streamlit
+streamlit run main.py --server.port 8531
+```
+
+B. Erreur d'authentification
+- Vérifier les identifiants
+- Réinitialiser le mot de passe via l'interface admin
+- Vérifier la base de données:
+```bash
+sqlite3 catalog.db
+SELECT * FROM users WHERE email = 'votre@email.com';
+```
+
+2. Problèmes de Synchronisation
+-----------------------------
+A. Échec de synchronisation Odoo
+- Vérifier la configuration dans .streamlit/secrets.toml
+- Tester la connexion:
+```bash
+curl -X GET https://votre-odoo.com/web/session/authenticate
+```
+- Vérifier les logs Odoo
+
+B. Erreur Prestashop
+- Vérifier la clé API
+- Tester l'accès:
+```bash
+curl -H "Authorization: Basic {YOUR_API_KEY}" https://votre-prestashop.com/api
+```
+
+3. Problèmes de Base de Données
+-----------------------------
+A. Erreur "no such table"
+```bash
+# Réinitialiser la base de données
+rm catalog.db
+python
+>>> from models.database import Base, engine
+>>> Base.metadata.create_all(bind=engine)
+```
+
+B. Erreur "database is locked"
+- Fermer toutes les connexions
+- Redémarrer l'application
+```bash
+pkill -f streamlit
+pkill -f uvicorn
+```
+
+4. Problèmes d'IA
+---------------
+A. Erreur OpenAI
+- Vérifier la clé API
+- Vérifier les quotas
+- Solution:
+```python
+# Dans ai_settings.py
+OPENAI_API_KEY = "votre_nouvelle_cle"
+```
+
+B. Erreur Ollama
+- Vérifier que le service est lancé
+```bash
+ollama list
+ollama run mistral
+```
+
+5. Problèmes de Scraping
+----------------------
+A. Erreur "Connection refused"
+- Vérifier les proxies
+- Attendre et réessayer
+- Solution:
+```python
+SCRAPING_CONFIG = {
+    "retry_delay": 60,
+    "max_retries": 3
+}
+```
+
+B. Données non extraites
+- Vérifier les sélecteurs
+- Mettre à jour les règles de scraping
+- Logs détaillés:
+```bash
+tail -f scraping.log
+```
+
+6. Problèmes de Performance
+-------------------------
+A. Lenteur générale
+- Vérifier l'utilisation CPU/RAM
+```bash
+top -u votre_utilisateur
+```
+- Nettoyer le cache:
+```bash
+rm -rf ~/.streamlit/cache
+```
+
+B. Timeouts fréquents
+- Augmenter les timeouts
+- Optimiser les requêtes
+```python
+TIMEOUT_CONFIG = {
+    "database": 30,
+    "api": 60,
+    "scraping": 120
+}
+```
+
+7. Problèmes de Paiement
+----------------------
+A. Erreur Stripe
+- Vérifier les logs Stripe
+- Tester le webhook:
+```bash
+stripe listen --forward-to localhost:8530/webhook
+```
+
+B. Échec de facturation
+- Vérifier le statut client:
+```python
+stripe.Customer.retrieve("cus_...")
+```
+
+8. Commandes Utiles
+-----------------
+A. Nettoyage Complet
+```bash
+# Arrêter tous les services
+pkill -f streamlit
+pkill -f uvicorn
+
+# Nettoyer les caches
+rm -rf ~/.streamlit/cache
+rm -rf __pycache__
+
+# Redémarrer les services
+./start_services.sh
+```
+
+B. Vérification État
+```bash
+# Vérifier les services
+ps aux | grep streamlit
+ps aux | grep uvicorn
+
+# Vérifier les ports
+netstat -tulpn | grep LISTEN
+
+# Vérifier les logs
+tail -f app.log
+```
+
+9. Messages d'Erreur Courants
+--------------------------
+A. "ModuleNotFoundError"
+```bash
+# Réinstaller les dépendances
+pip install -r requirements.txt
+```
+
+B. "Permission denied"
+```bash
+# Vérifier les permissions
+chmod -R 755 .
+chmod 644 *.py
+```
+
+10. Procédures de Récupération
+---------------------------
+A. Restauration Base de Données
+```bash
+# Restaurer depuis backup
+cp catalog.db.backup catalog.db
+```
+
+B. Reset Complet
+```bash
+# Réinitialisation complète
+rm catalog.db
+rm -rf __pycache__
+pip install -r requirements.txt
+python setup.py
+```
+
+Contact Support
+-------------
+Si le problème persiste:
+1. Collecter les logs
+2. Capturer les erreurs
+3. Décrire les étapes de reproduction
+4. Contacter: support@datafusion.com
+
+Notes Importantes
+---------------
+1. Toujours sauvegarder avant les modifications
+2. Vérifier les logs pour le diagnostic
+3. Tester dans un environnement de dev
+4. Documenter les solutions trouvées
+5. Maintenir les backups à jour
