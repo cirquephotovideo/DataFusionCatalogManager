@@ -1,68 +1,102 @@
 import streamlit as st
-import asyncio
+from components.auth_manager import check_auth, render_user_management, render_change_password
+from components.product_enrichment import render_product_enrichment
 from components.catalog_manager import render_catalog_manager
-from components.manufacturer_manager import render_manufacturer_manager
 from components.matching_engine import render_matching_engine
+from components.sync_scheduler import render_sync_scheduler
+from components.manufacturer_manager import render_manufacturer_manager
 from components.ftp_manager import render_ftp_manager
-from components.sync_monitor import render_sync_monitor
-from services.websocket_handler import start_websocket_server
-from services.sync_service import sync_service
-import threading
+from components.price_management import render_price_scraping, render_price_matching, render_competitor_analysis
+from components.ai_settings import render_ai_settings
 
 st.set_page_config(
-    page_title="Catalog Management System",
-    page_icon="📊",
+    page_title="Data Fusion Catalog Manager",
+    page_icon="🔄",
     layout="wide"
 )
 
-def main():
-    st.title("Catalog Management System")
-    
-    # Navigation
-    menu = ["Catalog Management", "Manufacturer Management", 
-            "Product Matching", "FTP Data Retrieval", "Sync Monitor"]
-    choice = st.sidebar.selectbox("Navigate", menu)
-    
-    if choice == "Catalog Management":
-        render_catalog_manager()
-    elif choice == "Manufacturer Management":
-        render_manufacturer_manager()
-    elif choice == "FTP Data Retrieval":
-        render_ftp_manager()
-    elif choice == "Sync Monitor":
-        render_sync_monitor()
+# Check authentication
+user_info = check_auth()
+
+# Sidebar navigation
+st.sidebar.title("Navigation")
+
+# Main menu items
+menu_items = {
+    "Catalog Management": {
+        "icon": "📊",
+        "pages": ["Product Enrichment", "Catalog Manager", "Matching Engine"]
+    },
+    "Price Management": {
+        "icon": "💰",
+        "pages": ["Price Scraping", "Price Matching", "Competitor Analysis"]
+    },
+    "Sync & Integration": {
+        "icon": "🔄",
+        "pages": ["Sync Scheduler", "FTP Manager"]
+    },
+    "Configuration": {
+        "icon": "⚙️",
+        "pages": ["Manufacturer Manager", "User Management", "Change Password", "AI Settings"]
+    }
+}
+
+# Create expandable sections for each menu category
+selected_page = None
+for category, details in menu_items.items():
+    with st.sidebar.expander(f"{details['icon']} {category}", expanded=True):
+        for page in details['pages']:
+            if st.button(page, key=f"nav_{page}", use_container_width=True):
+                selected_page = page
+
+# User info in sidebar
+st.sidebar.markdown("---")
+st.sidebar.write(f"Logged in as: **{user_info['username']}** ({user_info['role']})")
+if st.sidebar.button("Logout"):
+    st.session_state.user_service.logout(st.session_state.auth_token)
+    st.session_state.auth_token = None
+    st.rerun()
+
+# Store selected page in session state if it changed
+if selected_page and ('current_page' not in st.session_state or st.session_state.current_page != selected_page):
+    st.session_state.current_page = selected_page
+    st.rerun()
+
+# Get current page from session state
+current_page = st.session_state.get('current_page', 'Product Enrichment')
+
+# Render selected page
+if current_page == "Product Enrichment":
+    render_product_enrichment()
+elif current_page == "Catalog Manager":
+    render_catalog_manager()
+elif current_page == "Matching Engine":
+    render_matching_engine()
+elif current_page == "Price Scraping":
+    render_price_scraping()
+elif current_page == "Price Matching":
+    render_price_matching()
+elif current_page == "Competitor Analysis":
+    render_competitor_analysis()
+elif current_page == "Sync Scheduler":
+    render_sync_scheduler()
+elif current_page == "FTP Manager":
+    render_ftp_manager()
+elif current_page == "Manufacturer Manager":
+    render_manufacturer_manager()
+elif current_page == "User Management":
+    if user_info["role"] == "admin":
+        render_user_management()
     else:
-        render_matching_engine()
+        st.error("Access denied. Admin privileges required.")
+elif current_page == "Change Password":
+    render_change_password()
+elif current_page == "AI Settings":
+    if user_info["role"] == "admin":
+        render_ai_settings()
+    else:
+        st.error("Access denied. Admin privileges required.")
 
-def run_async_services():
-    """Run async services in a separate thread"""
-    async def start_services():
-        sync_service.start_scheduler()
-        server = await start_websocket_server()
-        try:
-            while True:
-                await asyncio.sleep(1)
-        except asyncio.CancelledError:
-            sync_service.stop_scheduler()
-            server.close()
-            await server.wait_closed()
-
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        loop.run_until_complete(start_services())
-    except KeyboardInterrupt:
-        pending = asyncio.all_tasks(loop)
-        for task in pending:
-            task.cancel()
-        loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
-    finally:
-        loop.close()
-
-if __name__ == "__main__":
-    # Start background services in a separate thread
-    services_thread = threading.Thread(target=run_async_services, daemon=True)
-    services_thread.start()
-    
-    # Run the Streamlit app
-    main()
+# Add version info at bottom of sidebar
+st.sidebar.markdown("---")
+st.sidebar.markdown("v1.0.0")

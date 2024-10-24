@@ -15,4 +15,5 @@ dependencies = [
     "uvicorn>=0.32.0",
     "websockets>=13.1",
     "xlrd>=2.0.1",
+    "watchdog>=5.0.3",
 ]

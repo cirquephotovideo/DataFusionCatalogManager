@@ -1,0 +1,14 @@
+{
+  "panajou": {
+    "url": "https://www.panajou.fr/appareils-photo-hybrides_c44",
+    "selectors": {
+      "price": "product  price  price-value  name"
+    }
+  },
+  "camara": {
+    "url": "https://www.camara.net/199-hybrides",
+    "selectors": {
+      "price": "product  price  price-value  name"
+    }
+  }
+}

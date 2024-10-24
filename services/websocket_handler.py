@@ -48,5 +48,19 @@ async def websocket_handler(websocket, path):
         await sync_service.unregister(websocket)
 
 async def start_websocket_server():
-    """Start the WebSocket server"""
-    return await websockets.serve(websocket_handler, "0.0.0.0", 8765)
+    """Start the WebSocket server with port fallback"""
+    ports = [8766, 8767, 8768, 8769, 8770]  # List of ports to try
+    
+    for port in ports:
+        try:
+            server = await websockets.serve(websocket_handler, "localhost", port)
+            print(f"WebSocket server started on port {port}")
+            return server
+        except OSError:
+            print(f"Port {port} is in use, trying next port...")
+            if port == ports[-1]:  # If this was the last port to try
+                print(f"Warning: Could not bind WebSocket server to any port. Sync features may be unavailable.")
+                return None
+            continue  # Try next port
+    
+    return None  # Fallback return if no ports work
