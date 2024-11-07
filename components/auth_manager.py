@@ -1,103 +1,158 @@
 import streamlit as st
-from services.user_service import UserService
+import hashlib
+import json
+import os
+from datetime import datetime, timedelta
+from typing import Optional, Dict
 
-def init_auth():
-    """Initialize authentication state"""
-    if 'user_service' not in st.session_state:
-        st.session_state.user_service = UserService()
-    if 'auth_token' not in st.session_state:
-        st.session_state.auth_token = None
+class AuthManager:
+    def __init__(self):
+        """Initialize authentication manager"""
+        self.users_file = 'users.json'
+        self.default_admin = {
+            'admin': {
+                'password': self.hash_password('admin'),
+                'role': 'admin',
+                'created_at': datetime.utcnow().isoformat()
+            }
+        }
+        self.users = self.load_users()
+
+    def load_users(self) -> Dict:
+        """Load users from file or create default admin"""
+        try:
+            if os.path.exists(self.users_file):
+                with open(self.users_file, 'r') as f:
+                    return json.load(f)
+            else:
+                self.save_users(self.default_admin)
+                return self.default_admin
+        except Exception as e:
+            print(f"Error loading users: {str(e)}")
+            return self.default_admin
+
+    def save_users(self, users: Dict) -> bool:
+        """Save users to file"""
+        try:
+            with open(self.users_file, 'w') as f:
+                json.dump(users, f, indent=2)
+            return True
+        except Exception as e:
+            print(f"Error saving users: {str(e)}")
+            return False
+
+    @staticmethod
+    def hash_password(password: str) -> str:
+        """Hash password using SHA-256"""
+        return hashlib.sha256(password.encode()).hexdigest()
+
+    def authenticate(self, username: str, password: str) -> bool:
+        """Authenticate user"""
+        try:
+            if username in self.users:
+                stored_password = self.users[username].get('password')
+                if stored_password and stored_password == self.hash_password(password):
+                    return True
+            return False
+        except Exception as e:
+            print(f"Authentication error: {str(e)}")
+            return False
+
+    def create_user(self, username: str, password: str, role: str = 'user') -> bool:
+        """Create new user"""
+        try:
+            if username in self.users:
+                return False
+            
+            self.users[username] = {
+                'password': self.hash_password(password),
+                'role': role,
+                'created_at': datetime.utcnow().isoformat()
+            }
+            return self.save_users(self.users)
+        except Exception as e:
+            print(f"Error creating user: {str(e)}")
+            return False
+
+    def change_password(self, username: str, old_password: str, new_password: str) -> bool:
+        """Change user password"""
+        try:
+            if self.authenticate(username, old_password):
+                self.users[username]['password'] = self.hash_password(new_password)
+                return self.save_users(self.users)
+            return False
+        except Exception as e:
+            print(f"Error changing password: {str(e)}")
+            return False
+
+    def get_user_role(self, username: str) -> Optional[str]:
+        """Get user role"""
+        try:
+            if username in self.users:
+                return self.users[username].get('role')
+            return None
+        except Exception as e:
+            print(f"Error getting user role: {str(e)}")
+            return None
 
 def render_login():
-    """Render login form"""
+    """Render login interface"""
     st.title("Login")
-    
+
+    # Initialize auth manager
+    if 'auth_manager' not in st.session_state:
+        st.session_state.auth_manager = AuthManager()
+
+    # Login form
     with st.form("login_form"):
         username = st.text_input("Username")
         password = st.text_input("Password", type="password")
-        submitted = st.form_submit_button("Login")
         
-        if submitted:
-            token = st.session_state.user_service.login(username, password)
-            if token:
-                st.session_state.auth_token = token
+        if st.form_submit_button("Login"):
+            if st.session_state.auth_manager.authenticate(username, password):
+                st.session_state.user = username
+                st.session_state.role = st.session_state.auth_manager.get_user_role(username)
                 st.success("Login successful!")
-                st.rerun()
+                st.experimental_rerun()
             else:
                 st.error("Invalid username or password")
 
+    # Show default credentials for demo
+    st.info("Default credentials: admin/admin")
+
 def render_user_management():
     """Render user management interface"""
-    st.header("User Management")
-    
-    # Add new user
-    with st.form("add_user"):
-        st.subheader("Add New User")
-        username = st.text_input("Username")
-        password = st.text_input("Password", type="password")
+    st.title("User Management")
+
+    # Check admin access
+    if not hasattr(st.session_state, 'role') or st.session_state.role != 'admin':
+        st.error("Access denied")
+        return
+
+    # Create new user
+    st.subheader("Create New User")
+    with st.form("create_user_form"):
+        new_username = st.text_input("Username")
+        new_password = st.text_input("Password", type="password")
         role = st.selectbox("Role", ["user", "admin"])
         
-        if st.form_submit_button("Add User"):
-            if username and password:
-                if st.session_state.user_service.create_user(username, password, role):
-                    st.success(f"User {username} created successfully")
-                else:
-                    st.error("Username already exists")
+        if st.form_submit_button("Create User"):
+            if st.session_state.auth_manager.create_user(new_username, new_password, role):
+                st.success("User created successfully!")
             else:
-                st.error("Username and password are required")
+                st.error("Username already exists")
 
     # List users
     st.subheader("Users")
-    users = st.session_state.user_service.get_users()
-    
-    for user in users:
-        col1, col2, col3, col4 = st.columns([2, 2, 2, 1])
-        with col1:
-            st.write(f"**{user['username']}**")
-        with col2:
-            st.write(f"Role: {user['role']}")
-        with col3:
-            st.write(f"Last login: {user['last_login'] or 'Never'}")
-        with col4:
-            if user['username'] != "admin":
-                if st.button("Delete", key=f"delete_{user['username']}"):
-                    if st.session_state.user_service.delete_user(user['username']):
-                        st.success(f"User {user['username']} deleted")
-                        st.rerun()
-                    else:
-                        st.error("Failed to delete user")
-
-def render_change_password():
-    """Render change password form"""
-    st.header("Change Password")
-    
-    with st.form("change_password"):
-        old_password = st.text_input("Current Password", type="password")
-        new_password = st.text_input("New Password", type="password")
-        confirm_password = st.text_input("Confirm New Password", type="password")
-        
-        if st.form_submit_button("Change Password"):
-            if new_password != confirm_password:
-                st.error("New passwords don't match")
-            else:
-                user_info = st.session_state.user_service.verify_session(st.session_state.auth_token)
-                if st.session_state.user_service.change_password(user_info["username"], old_password, new_password):
-                    st.success("Password changed successfully")
-                else:
-                    st.error("Current password is incorrect")
+    users = st.session_state.auth_manager.users
+    for username, user_data in users.items():
+        with st.expander(f"User: {username}"):
+            st.write(f"Role: {user_data['role']}")
+            st.write(f"Created: {user_data['created_at']}")
 
 def check_auth():
-    """Check if user is authenticated and return user info"""
-    init_auth()
-    
-    if not st.session_state.auth_token:
+    """Check if user is authenticated"""
+    if not hasattr(st.session_state, 'user'):
         render_login()
-        st.stop()
-    
-    user_info = st.session_state.user_service.verify_session(st.session_state.auth_token)
-    if not user_info:
-        st.session_state.auth_token = None
-        render_login()
-        st.stop()
-    
-    return user_info
+        return False
+    return True

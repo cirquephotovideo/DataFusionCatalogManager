@@ -1,246 +1,184 @@
 import streamlit as st
-from services.ai_service import AIService
-from services.catalog_service import CatalogService
-from services.competitor_service import CompetitorService
-import asyncio
-from datetime import datetime
 import pandas as pd
-import math
-import json
-
-def format_datetime(dt):
-    """Format datetime for display"""
-    if dt:
-        return dt.strftime("%Y-%m-%d %H:%M")
-    return "-"
-
-def safe_lower(value):
-    """Safely convert value to lowercase string"""
-    if value is None:
-        return ""
-    return str(value).lower()
-
-async def enrich_with_ai(ai_service, product_id: str, model: str, prompt_index: int = None):
-    """Enrich product details using specified AI model and selected prompts"""
-    product = CatalogService.get_catalog(product_id)
-    
-    # Get configured prompts or use defaults
-    prompts = st.session_state.get('enrichment_prompts', [
-        "Create a detailed product description focusing on features and benefits",
-        "Generate technical specifications in a structured format",
-        "Suggest SEO-optimized product title and meta description",
-        "List main product features and use cases",
-        "Generate relevant product categories and tags",
-        "Create a marketing-focused product description highlighting unique selling points"
-    ])
-    
-    # If prompt_index is provided, only process that specific prompt
-    if prompt_index is not None:
-        prompts = [prompts[prompt_index]]
-    
-    results = []
-    for prompt in prompts:
-        full_prompt = f"""
-        Generate a response in pure HTML format using only <p>, <strong>, <ul>, <li> tags.
-        The product name is: {product.get('name', '')}
-        With information:
-        - Description: {product.get('description', '')}
-        - Technical Details: {product.get('technical_details', '')}
-        - Barcode: {product.get('barcode', '')}
-        - Article Code: {product.get('article_code', '')}
-        
-        Task: {prompt}
-        
-        Respond in a structured HTML format without any markdown or code blocks.
-        """
-        
-        try:
-            response = await ai_service.generate_content(full_prompt, model)
-            results.append({
-                "prompt": prompt,
-                "response": response.strip()
-            })
-        except Exception as e:
-            results.append({
-                "prompt": prompt,
-                "error": str(e)
-            })
-    
-    return True, results
-
-def render_enrichment_results(results):
-    """Render AI enrichment results in a block layout"""
-    # Create columns for results (2 columns)
-    cols = st.columns(2)
-    
-    for idx, result in enumerate(results):
-        with cols[idx % 2]:
-            st.markdown("---")
-            st.subheader(f"📝 {result['prompt']}")
-            if "error" in result:
-                st.error(f"Error: {result['error']}")
-            else:
-                # Display HTML content directly
-                st.markdown(result['response'], unsafe_allow_html=True)
-
-def render_editable_field(label: str, value: str, key: str):
-    """Render an editable field with edit button"""
-    col1, col2 = st.columns([4, 1])
-    with col1:
-        if f"editing_{key}" in st.session_state and st.session_state[f"editing_{key}"]:
-            new_value = st.text_area(label, value=value, key=f"input_{key}")
-            if st.button("Save", key=f"save_{key}"):
-                st.session_state[f"editing_{key}"] = False
-                return new_value, True
-            if st.button("Cancel", key=f"cancel_{key}"):
-                st.session_state[f"editing_{key}"] = False
-                return value, False
-        else:
-            st.write(f"{label}: {value}")
-    with col2:
-        if f"editing_{key}" not in st.session_state or not st.session_state[f"editing_{key}"]:
-            if st.button("✏️", key=f"edit_{key}"):
-                st.session_state[f"editing_{key}"] = True
-                st.rerun()
-    return value, False
-
-def render_product_card(product, ai_service):
-    """Render a product card with AI enrichment buttons and editable fields"""
-    with st.container():
-        st.markdown("---")
-        col1, col2 = st.columns([3, 1])
-        
-        with col1:
-            # Editable fields
-            name, name_changed = render_editable_field("Name", product.get('name', 'No Name'), f"name_{product['id']}")
-            description, desc_changed = render_editable_field("Description", product.get('description', 'No description'), f"desc_{product['id']}")
-            article_code, code_changed = render_editable_field("Article Code", product.get('article_code', 'N/A'), f"code_{product['id']}")
-            barcode, barcode_changed = render_editable_field("Barcode", product.get('barcode', 'N/A'), f"barcode_{product['id']}")
-            
-            # If any field was changed, update the product
-            if any([name_changed, desc_changed, code_changed, barcode_changed]):
-                updated_product = product.copy()
-                if name_changed: updated_product['name'] = name
-                if desc_changed: updated_product['description'] = description
-                if code_changed: updated_product['article_code'] = article_code
-                if barcode_changed: updated_product['barcode'] = barcode
-                
-                # Update product in database
-                success = CatalogService.update_catalog(product['id'], updated_product)
-                if success:
-                    st.success("Product updated successfully!")
-                    st.rerun()
-                else:
-                    st.error("Failed to update product")
-            
-            # Non-editable fields
-            st.write(f"Stock: {product.get('stock_quantity', '0')}")
-            if product.get('purchase_price'):
-                st.write(f"Purchase Price (HT): €{product['purchase_price']}")
-            if product.get('price'):
-                st.write(f"Selling Price: €{product['price']}")
-            st.write(f"Last Updated: {format_datetime(product.get('last_updated'))}")
-            st.write(f"Source: {product.get('source', 'Unknown')}")
-        
-        with col2:
-            st.markdown("### AI Enrichment")
-            
-            # Get current AI config
-            current_config = ai_service.get_active_config()
-            if not current_config:
-                st.warning("⚠️ AI not configured. Please set up AI Settings first.")
-                return
-            
-            # Generate All button
-            if st.button("🔄 Generate All Content", key=f"all_{product['id']}", use_container_width=True):
-                with st.spinner("Generating all content..."):
-                    success, results = asyncio.run(enrich_with_ai(
-                        ai_service,
-                        product['id'],
-                        current_config['model']
-                    ))
-                    if success:
-                        st.success("Content generation completed!")
-                        render_enrichment_results(results)
-                    else:
-                        st.error(f"Generation failed: {results}")
-            
-            # Individual prompt buttons
-            st.markdown("### Generate Individual Sections")
-            prompts = st.session_state.get('enrichment_prompts', [])
-            for idx, prompt in enumerate(prompts):
-                if st.button(f"📝 {prompt[:30]}...", key=f"prompt_{idx}_{product['id']}", use_container_width=True):
-                    with st.spinner(f"Generating content for prompt {idx + 1}..."):
-                        success, results = asyncio.run(enrich_with_ai(
-                            ai_service,
-                            product['id'],
-                            current_config['model'],
-                            idx
-                        ))
-                        if success:
-                            st.success("Content generation completed!")
-                            render_enrichment_results(results)
-                        else:
-                            st.error(f"Generation failed: {results}")
 
 def render_product_enrichment():
-    """Main product enrichment interface"""
-    st.title("Product Enrichment")
+    """Render product enrichment interface"""
+    st.title("Product Management")
 
-    # Initialize services
-    if 'ai_service' not in st.session_state:
-        st.session_state.ai_service = AIService()
+    # Create tabs for different functions
+    list_tab, create_tab = st.tabs(["Product List", "Create Product"])
 
-    # Search and filter section
-    st.subheader("Search Products")
-    search_term = st.text_input("Search by name, reference, or article code")
-    
-    # Get products
-    products = CatalogService.get_catalogs()
-    if not products:
-        st.warning("No products found in the catalog")
-        return
+    with list_tab:
+        render_product_list()
 
-    # Filter products
-    if search_term:
-        search_term_lower = search_term.lower()
-        filtered_products = [p for p in products if 
-            search_term_lower in safe_lower(p.get('name')) or
-            search_term_lower in safe_lower(p.get('reference')) or
-            search_term_lower in safe_lower(p.get('article_code'))]
-    else:
-        filtered_products = products
+    with create_tab:
+        render_product_form()
 
-    # Pagination
-    items_per_page = 10
-    total_pages = math.ceil(len(filtered_products) / items_per_page)
-    
-    if 'page_number' not in st.session_state:
-        st.session_state.page_number = 1
-
-    # Pagination controls
-    col1, col2, col3 = st.columns([1, 2, 1])
+def render_product_list():
+    """Render list of products"""
+    # Search and filter
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        search = st.text_input("Search Products", placeholder="Enter product name or reference")
     with col2:
-        st.write(f"Page {st.session_state.page_number} of {total_pages}")
+        status_filter = st.selectbox("Status", ["All", "Active", "Inactive"])
 
-    # Calculate slice indices
-    start_idx = (st.session_state.page_number - 1) * items_per_page
-    end_idx = start_idx + items_per_page
-    page_products = filtered_products[start_idx:end_idx]
+    # Sample products data
+    products = [
+        {
+            'id': 1,
+            'name': 'iPhone 13 Pro',
+            'reference': 'IP13P-256',
+            'article_code': 'APPL-13P',
+            'barcode': '123456789',
+            'stock_quantity': 50,
+            'purchase_price': 899.99,
+            'list_price': 999.99,
+            'status': 'active',
+            'description': 'Latest iPhone model with pro camera system'
+        },
+        {
+            'id': 2,
+            'name': 'MacBook Air M1',
+            'reference': 'MBA-M1-256',
+            'article_code': 'APPL-MBA',
+            'barcode': '987654321',
+            'stock_quantity': 25,
+            'purchase_price': 899.99,
+            'list_price': 999.99,
+            'status': 'active',
+            'description': 'Powerful laptop with M1 chip'
+        },
+        {
+            'id': 3,
+            'name': 'AirPods Pro',
+            'reference': 'APP-2ND',
+            'article_code': 'APPL-APP',
+            'barcode': '456789123',
+            'stock_quantity': 100,
+            'purchase_price': 199.99,
+            'list_price': 249.99,
+            'status': 'active',
+            'description': 'Wireless earbuds with noise cancellation'
+        }
+    ]
 
     # Display products
-    for product in page_products:
-        render_product_card(product, st.session_state.ai_service)
+    for product in products:
+        with st.expander(f"{product['name']} ({product['reference']})"):
+            col1, col2, col3 = st.columns([2, 2, 1])
+            
+            with col1:
+                st.write("**Basic Information**")
+                st.write(f"Article Code: {product['article_code']}")
+                st.write(f"Barcode: {product['barcode']}")
+                st.write(f"Status: {product['status']}")
+                
+            with col2:
+                st.write("**Stock & Price**")
+                st.write(f"Stock: {product['stock_quantity']}")
+                st.write(f"Purchase Price: ${product['purchase_price']:.2f}")
+                st.write(f"List Price: ${product['list_price']:.2f}")
+            
+            with col3:
+                st.write("**Actions**")
+                if st.button("Edit", key=f"edit_{product['id']}"):
+                    st.session_state.editing_product = product
+                
+                if st.button("Delete", key=f"delete_{product['id']}"):
+                    st.success(f"Product {product['name']} would be deleted")
+            
+            if product['description']:
+                st.write("**Description**")
+                st.write(product['description'])
 
-    # Pagination navigation
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        if st.session_state.page_number > 1:
-            if st.button("Previous Page"):
-                st.session_state.page_number -= 1
-                st.rerun()
-    with col3:
-        if st.session_state.page_number < total_pages:
-            if st.button("Next Page"):
-                st.session_state.page_number += 1
-                st.rerun()
+def render_product_form():
+    """Render product creation/edit form"""
+    st.subheader("Product Details")
+    
+    editing = False
+    if hasattr(st.session_state, 'editing_product'):
+        editing = True
+        product = st.session_state.editing_product
+        st.info(f"Editing product: {product['name']}")
+    else:
+        product = {
+            'name': '',
+            'description': '',
+            'reference': '',
+            'article_code': '',
+            'barcode': '',
+            'stock_quantity': 0,
+            'purchase_price': 0.0,
+            'list_price': 0.0,
+            'status': 'active'
+        }
+
+    with st.form("product_form"):
+        # Basic Information
+        st.write("**Basic Information**")
+        name = st.text_input("Product Name", value=product['name'])
+        description = st.text_area("Description", value=product['description'])
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            reference = st.text_input("Reference", value=product['reference'])
+            article_code = st.text_input("Article Code", value=product['article_code'])
+        
+        with col2:
+            barcode = st.text_input("Barcode", value=product['barcode'])
+            status = st.selectbox(
+                "Status",
+                options=['active', 'inactive', 'pending'],
+                index=['active', 'inactive', 'pending'].index(product['status'])
+            )
+        
+        # Stock and Price
+        st.write("**Stock & Price Information**")
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            stock = st.number_input(
+                "Stock Quantity",
+                value=product['stock_quantity'],
+                min_value=0
+            )
+        with col2:
+            purchase_price = st.number_input(
+                "Purchase Price",
+                value=product['purchase_price'],
+                min_value=0.0,
+                format="%.2f"
+            )
+        with col3:
+            list_price = st.number_input(
+                "List Price",
+                value=product['list_price'],
+                min_value=0.0,
+                format="%.2f"
+            )
+
+        # Media
+        st.write("**Media**")
+        st.file_uploader("Product Images", accept_multiple_files=True)
+
+        # Categories and Tags
+        st.write("**Organization**")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.selectbox("Category", ["Electronics", "Computers", "Accessories"])
+            st.multiselect("Tags", ["New", "Featured", "Sale", "Premium"])
+        with col2:
+            st.selectbox("Brand", ["Apple", "Samsung", "Microsoft"])
+            st.selectbox("Supplier", ["Direct", "Distributor A", "Distributor B"])
+
+        if st.form_submit_button("Save Product"):
+            if editing:
+                st.success("Product updated successfully!")
+                if 'editing_product' in st.session_state:
+                    del st.session_state.editing_product
+            else:
+                st.success("Product created successfully!")
+
+    if editing and st.button("Cancel Editing"):
+        if 'editing_product' in st.session_state:
+            del st.session_state.editing_product

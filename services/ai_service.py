@@ -1,16 +1,18 @@
 import google.generativeai as genai
 import openai
-from typing import Dict, List, Optional, Tuple
-from models.database import SessionLocal, AIConfig, Catalog, ProductEnrichment
+from typing import Dict, List, Tuple, Optional
+from models.database import SessionLocal, AIConfig, AIEnrichmentPrompt, AIGenerationLog
 from datetime import datetime
 import json
-import asyncio
+import logging
+from services.ollama_service import OllamaService
 
 class AIService:
     def __init__(self):
-        """Initialize AI service without creating clients"""
+        """Initialize AI service"""
         self.openai_client = None
         self.gemini_model = None
+        self.ollama_service = OllamaService()
         self.active_config = None
         self._load_active_config()
 
@@ -20,160 +22,183 @@ class AIService:
         try:
             config = db.query(AIConfig).filter(AIConfig.is_active == True).first()
             if config:
-                self.active_config = config
+                self.active_config = {
+                    'provider': config.provider,
+                    'model': config.model,
+                    'api_key': config.api_key,
+                    'temperature': config.temperature,
+                    'language': config.language,
+                    'settings': config.settings
+                }
+                
                 if config.provider == 'openai' and config.api_key:
                     try:
                         self.openai_client = openai.OpenAI(api_key=config.api_key)
                     except Exception as e:
-                        print(f"Error initializing OpenAI client: {str(e)}")
+                        logging.error(f"Error initializing OpenAI client: {str(e)}")
+                
                 elif config.provider == 'gemini' and config.api_key:
                     try:
                         genai.configure(api_key=config.api_key)
                         self.gemini_model = genai.GenerativeModel(config.model)
                     except Exception as e:
-                        print(f"Error initializing Gemini client: {str(e)}")
-        except Exception as e:
-            print(f"Error loading AI config: {str(e)}")
-        finally:
-            db.close()
-
-    async def generate_content(self, prompt: str, model: str = None) -> str:
-        """Generate content using configured AI model"""
-        if not self.active_config:
-            raise Exception("No AI configuration found. Please configure an AI provider first.")
-
-        try:
-            # Use specified model or fall back to configured model
-            use_model = model or self.active_config.model
-            
-            # Get language setting
-            language = getattr(self.active_config, 'language', 'fr_FR')
-            
-            # Add language instruction to prompt
-            language_map = {
-                'fr_FR': 'French',
-                'en_US': 'English',
-                'es_ES': 'Spanish',
-                'de_DE': 'German',
-                'it_IT': 'Italian'
-            }
-            
-            language_instruction = f"""
-            Please respond in {language_map.get(language, 'French')}.
-            Format the response in pure HTML using only <p>, <strong>, <ul>, and <li> tags.
-            Do not include any markdown or code blocks.
-            """
-            
-            full_prompt = f"{language_instruction}\n\n{prompt}"
-
-            if self.active_config.provider == 'openai':
-                if not self.openai_client:
-                    raise Exception("OpenAI client not configured")
+                        logging.error(f"Error initializing Gemini client: {str(e)}")
                 
-                # Create completion in a non-blocking way
-                loop = asyncio.get_event_loop()
-                response = await loop.run_in_executor(
-                    None,
-                    lambda: self.openai_client.chat.completions.create(
-                        model=use_model,
-                        messages=[
-                            {"role": "system", "content": "You are a product enrichment specialist."},
-                            {"role": "user", "content": full_prompt}
-                        ],
-                        temperature=self.active_config.temperature
-                    )
-                )
-                return response.choices[0].message.content
-
-            elif self.active_config.provider == 'gemini':
-                if not self.gemini_model:
-                    raise Exception("Gemini model not configured")
+                # Update last used timestamp
+                config.last_used = datetime.utcnow()
+                db.commit()
                 
-                # Create completion in a non-blocking way
-                loop = asyncio.get_event_loop()
-                response = await loop.run_in_executor(
-                    None,
-                    lambda: self.gemini_model.generate_content(
-                        full_prompt,
-                        generation_config={"temperature": self.active_config.temperature}
-                    )
-                )
-                return response.text
-
-            else:
-                raise Exception(f"Unsupported AI provider: {self.active_config.provider}")
-
         except Exception as e:
-            raise Exception(f"Error generating content: {str(e)}")
-
-    def configure_ai(self, provider: str, api_key: str, model: str, temperature: float = 0.7, language: str = 'fr_FR') -> Tuple[bool, str]:
-        """Configure AI settings"""
-        if not api_key and not self.active_config:
-            return False, "API key is required"
-
-        db = SessionLocal()
-        try:
-            # Test the configuration first
-            try:
-                if provider == 'openai':
-                    client = openai.OpenAI(api_key=api_key)
-                    # Test with a simple completion
-                    client.chat.completions.create(
-                        model=model,
-                        messages=[{"role": "user", "content": "test"}],
-                        max_tokens=5
-                    )
-                elif provider == 'gemini':
-                    genai.configure(api_key=api_key)
-                    model = genai.GenerativeModel(model)
-                    # Test with a simple completion
-                    model.generate_content("test")
-                else:
-                    return False, f"Unsupported AI provider: {provider}"
-            except Exception as e:
-                return False, f"Error testing AI configuration: {str(e)}"
-
-            # Deactivate all existing configs
-            db.query(AIConfig).update({"is_active": False})
-            
-            # Create new config
-            config = AIConfig(
-                provider=provider,
-                api_key=api_key if api_key else self.active_config.api_key if self.active_config else None,
-                model=model,
-                temperature=temperature,
-                language=language,
-                max_tokens=2000 if provider == 'openai' else None,
-                is_active=True
-            )
-            db.add(config)
-            db.commit()
-            
-            # Reload configuration
-            self._load_active_config()
-            return True, "AI configuration updated successfully"
-        except Exception as e:
-            db.rollback()
-            return False, f"Error configuring AI: {str(e)}"
+            logging.error(f"Error loading AI config: {str(e)}")
         finally:
             db.close()
 
     def get_active_config(self) -> Optional[Dict]:
-        """Get active AI configuration"""
-        if self.active_config:
-            return {
-                'provider': self.active_config.provider,
-                'model': self.active_config.model,
-                'temperature': self.active_config.temperature,
-                'language': getattr(self.active_config, 'language', 'fr_FR'),
-                'last_used': self.active_config.last_used
-            }
-        return None
+        """Get current active configuration"""
+        return self.active_config
 
-    def get_available_models(self, provider: str) -> List[str]:
-        """Get available models for the specified provider"""
-        if provider == 'openai':
-            return ["gpt-3.5-turbo", "gpt-4"]
-        elif provider == 'gemini':
-            return ["gemini-pro"]
-        return []
+    def configure_ai(self, provider: str, model: str, api_key: Optional[str] = None,
+                    temperature: float = 0.7, language: str = 'fr_FR',
+                    settings: Optional[Dict] = None) -> Tuple[bool, str]:
+        """Configure AI service"""
+        db = SessionLocal()
+        try:
+            # Deactivate current active config
+            db.query(AIConfig).filter(AIConfig.is_active == True).update(
+                {"is_active": False}
+            )
+
+            # Create new config
+            config = AIConfig(
+                provider=provider,
+                model=model,
+                api_key=api_key,
+                temperature=temperature,
+                language=language,
+                settings=settings or {},
+                is_active=True
+            )
+            db.add(config)
+            db.commit()
+
+            # Reload configuration
+            self._load_active_config()
+            return True, "Configuration saved successfully"
+
+        except Exception as e:
+            db.rollback()
+            return False, f"Error saving configuration: {str(e)}"
+        finally:
+            db.close()
+
+    def get_enrichment_prompts(self, language: Optional[str] = None) -> List[Dict]:
+        """Get available enrichment prompts"""
+        db = SessionLocal()
+        try:
+            query = db.query(AIEnrichmentPrompt).filter(AIEnrichmentPrompt.is_active == True)
+            if language:
+                query = query.filter(AIEnrichmentPrompt.language == language)
+            
+            prompts = query.all()
+            return [
+                {
+                    'id': p.id,
+                    'name': p.name,
+                    'prompt': p.prompt,
+                    'language': p.language,
+                    'category': p.category
+                }
+                for p in prompts
+            ]
+        finally:
+            db.close()
+
+    def save_enrichment_prompt(self, name: str, prompt: str, language: str,
+                             category: str) -> Tuple[bool, str]:
+        """Save new enrichment prompt"""
+        db = SessionLocal()
+        try:
+            prompt_obj = AIEnrichmentPrompt(
+                name=name,
+                prompt=prompt,
+                language=language,
+                category=category
+            )
+            db.add(prompt_obj)
+            db.commit()
+            return True, "Prompt saved successfully"
+        except Exception as e:
+            db.rollback()
+            return False, f"Error saving prompt: {str(e)}"
+        finally:
+            db.close()
+
+    def generate_content(self, prompt: str, context: Optional[Dict] = None) -> Tuple[bool, str]:
+        """Generate content using configured AI service"""
+        if not self.active_config:
+            return False, "No active AI configuration"
+
+        try:
+            start_time = datetime.utcnow()
+            response = ""
+            tokens = 0
+            error_msg = None
+
+            if self.active_config['provider'] == 'openai':
+                if not self.openai_client:
+                    return False, "OpenAI client not initialized"
+                
+                completion = self.openai_client.chat.completions.create(
+                    model=self.active_config['model'],
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=self.active_config['temperature']
+                )
+                response = completion.choices[0].message.content
+                tokens = completion.usage.total_tokens
+
+            elif self.active_config['provider'] == 'gemini':
+                if not self.gemini_model:
+                    return False, "Gemini model not initialized"
+                
+                result = self.gemini_model.generate_content(prompt)
+                response = result.text
+
+            elif self.active_config['provider'] == 'ollama':
+                response = self.ollama_service.generate(
+                    model=self.active_config['model'],
+                    prompt=prompt
+                )
+
+            # Log generation
+            duration = (datetime.utcnow() - start_time).total_seconds()
+            self._log_generation(prompt, response, tokens, duration, error_msg)
+
+            return True, response
+
+        except Exception as e:
+            error_msg = str(e)
+            self._log_generation(prompt, "", 0, 0, error_msg)
+            return False, f"Error generating content: {error_msg}"
+
+    def _log_generation(self, input_text: str, output_text: str, tokens: int,
+                       duration: float, error_message: Optional[str] = None):
+        """Log AI generation attempt"""
+        db = SessionLocal()
+        try:
+            config = db.query(AIConfig).filter(AIConfig.is_active == True).first()
+            if config:
+                log = AIGenerationLog(
+                    config_id=config.id,
+                    input_text=input_text,
+                    output_text=output_text,
+                    tokens_used=tokens,
+                    duration=duration,
+                    status="success" if not error_message else "failed",
+                    error_message=error_message
+                )
+                db.add(log)
+                db.commit()
+        except Exception as e:
+            logging.error(f"Error logging AI generation: {str(e)}")
+        finally:
+            db.close()

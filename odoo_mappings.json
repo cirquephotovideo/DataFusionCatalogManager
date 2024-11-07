@@ -1,1 +1,1 @@
-{"name": "name", "article_code": "default_code", "barcode": "barcode", "description": "", "price": "list_price", "purchase_price": "standard_price", "stock_quantity": "qty_available"}
+{"name": "name", "article_code": "default_code", "barcode": "barcode", "description": "amazon_product_description", "price": "list_price", "purchase_price": "standard_price", "stock_quantity": "qty_available"}
