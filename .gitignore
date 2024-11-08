@@ -4,7 +4,6 @@ __pycache__/
 *$py.class
 *.so
 .Python
-env/
 build/
 develop-eggs/
 dist/
@@ -24,11 +23,8 @@ wheels/
 # Virtual Environment
 venv/
 ENV/
+env/
 .env
-
-# Database
-*.db
-*.sqlite3
 
 # IDE
 .idea/
@@ -36,19 +32,19 @@ ENV/
 *.swp
 *.swo
 
-# OS
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
+# Database
+*.db
+*.sqlite3
 
-# Application specific
-sessions.json
-saved_connections.json
-sync_history.json
-sync_schedule.json
-users.json
+# Logs
 *.log
+
+# Local development
+.DS_Store
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Streamlit
+.streamlit/secrets.toml

@@ -4,20 +4,43 @@ from sqlalchemy.orm import sessionmaker, relationship
 from datetime import datetime
 import enum
 import os
+import streamlit as st
 from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
 
-# Get database URL from environment variable, fallback to SQLite for local development
-SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./catalog.db")
+# Get database URL from Streamlit secrets in production, fallback to environment variable or SQLite
+def get_database_url():
+    if hasattr(st, "secrets"):
+        try:
+            return st.secrets["database"]["url"]
+        except (KeyError, AttributeError):
+            pass
+    
+    return os.getenv("DATABASE_URL", "sqlite:///./catalog.db")
+
+# Get database URL
+SQLALCHEMY_DATABASE_URL = get_database_url()
 
 # Handle special case for postgres URLs from some hosting providers
 if SQLALCHEMY_DATABASE_URL.startswith("postgres://"):
     SQLALCHEMY_DATABASE_URL = SQLALCHEMY_DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
-# Create database engine
-engine = create_engine(SQLALCHEMY_DATABASE_URL)
+# Create database engine with proper settings for both SQLite and PostgreSQL
+if SQLALCHEMY_DATABASE_URL.startswith("sqlite"):
+    engine = create_engine(
+        SQLALCHEMY_DATABASE_URL, 
+        connect_args={"check_same_thread": False}
+    )
+else:
+    engine = create_engine(
+        SQLALCHEMY_DATABASE_URL,
+        pool_size=5,
+        max_overflow=10,
+        pool_timeout=30,
+        pool_recycle=1800
+    )
 
 # Create session factory
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
