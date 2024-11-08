@@ -12,7 +12,13 @@ load_dotenv()
 
 # Health check endpoint
 def health_check():
-    return {"status": "healthy"}
+    try:
+        # Verify database connection
+        db = SessionLocal()
+        db.close()
+        return {"status": "healthy"}
+    except Exception as e:
+        return {"status": "unhealthy", "error": str(e)}
 
 # Configure Streamlit
 st.set_page_config(
@@ -21,10 +27,6 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
-
-# Add health check endpoint
-if st._is_running_with_streamlit:
-    health_check()
 
 # Initialize database at startup
 @st.cache_resource
@@ -69,6 +71,12 @@ def main():
     try:
         # Initialize database
         if not initialize_database():
+            st.stop()
+
+        # Perform health check
+        health_status = health_check()
+        if health_status["status"] != "healthy":
+            st.error(f"Health check failed: {health_status.get('error', 'Unknown error')}")
             st.stop()
 
         st.title("Data Fusion Catalog Manager")
