@@ -1,5 +1,4 @@
 import streamlit as st
-import pandas as pd
 
 # Set page config with dark theme
 st.set_page_config(
@@ -65,31 +64,31 @@ if main_page == "Dashboard":
     
     # Recent Activity
     st.subheader("Recent Activity")
-    activity_data = pd.DataFrame({
+    st.table({
         "Timestamp": ["2024-01-24 10:00", "2024-01-24 09:45", "2024-01-24 09:30"],
         "Activity": ["Product sync completed", "New subscription added", "Price update"],
         "Status": ["Success", "Success", "Success"]
     })
-    st.dataframe(activity_data, use_container_width=True)
     
     # Charts
     chart_col1, chart_col2 = st.columns(2)
     
     with chart_col1:
         st.subheader("Sync Performance")
-        performance_data = pd.DataFrame({
+        st.line_chart({
             "Success Rate": [99, 98, 99, 100, 99, 98, 99],
             "Error Rate": [1, 2, 1, 0, 1, 2, 1]
         })
-        st.line_chart(performance_data)
     
     with chart_col2:
         st.subheader("Product Distribution")
-        distribution_data = pd.DataFrame({
-            "Category": ["A", "B", "C", "D", "E"],
-            "Products": [100, 80, 60, 40, 20]
-        }).set_index("Category")
-        st.bar_chart(distribution_data)
+        st.bar_chart({
+            "Category A": [100],
+            "Category B": [80],
+            "Category C": [60],
+            "Category D": [40],
+            "Category E": [20]
+        })
 
 else:
     st.title(main_page)
