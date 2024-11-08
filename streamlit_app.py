@@ -1,6 +1,10 @@
 import streamlit as st
 from data_import_options import render_data_import_dashboard
 
+# Initialize session state for health check
+if 'health_check_status' not in st.session_state:
+    st.session_state.health_check_status = 'healthy'
+
 # Set page config with dark theme
 st.set_page_config(
     page_title="Data Fusion Catalog Manager",
@@ -13,8 +17,11 @@ st.set_page_config(
 # Health check endpoint
 def health_check():
     try:
+        # Update health status in session state
+        st.session_state.health_check_status = 'healthy'
         return {"status": "healthy"}
     except Exception as e:
+        st.session_state.health_check_status = 'unhealthy'
         return {"status": "unhealthy", "error": str(e)}
 
 # Apply dark theme
@@ -53,11 +60,15 @@ main_page = st.sidebar.selectbox(
     index=0  # Set Import/Export as default
 )
 
-# Run health check at startup
+# Run health check
 health_status = health_check()
-if health_status["status"] != "healthy":
-    st.error(f"Health check failed: {health_status.get('error', 'Unknown error')}")
-    st.stop()
+
+# Display health status in sidebar
+st.sidebar.markdown("---")
+if st.session_state.health_check_status == 'healthy':
+    st.sidebar.success("System Status: Healthy")
+else:
+    st.sidebar.error("System Status: Unhealthy")
 
 # Render selected page
 if main_page == "Import/Export":
