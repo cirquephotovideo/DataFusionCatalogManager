@@ -3,9 +3,20 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from datetime import datetime
 import enum
+import os
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
+# Get database URL from environment variable, fallback to SQLite for local development
+SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./catalog.db")
+
+# Handle special case for postgres URLs from some hosting providers
+if SQLALCHEMY_DATABASE_URL.startswith("postgres://"):
+    SQLALCHEMY_DATABASE_URL = SQLALCHEMY_DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
 # Create database engine
-SQLALCHEMY_DATABASE_URL = "sqlite:///./catalog.db"
 engine = create_engine(SQLALCHEMY_DATABASE_URL)
 
 # Create session factory
@@ -127,5 +138,9 @@ class ProductEnrichment(Base):
     # Relationships
     catalog = relationship("Catalog", back_populates="enrichments")
 
-# Create all tables
-Base.metadata.create_all(bind=engine)
+def init_db():
+    """Initialize the database tables"""
+    Base.metadata.create_all(bind=engine)
+
+# Initialize database tables
+init_db()
