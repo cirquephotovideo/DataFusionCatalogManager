@@ -1,9 +1,6 @@
 import streamlit as st
 from data_import_options import render_data_import_dashboard
-
-# Initialize session state for health check
-if 'health_check_status' not in st.session_state:
-    st.session_state.health_check_status = 'healthy'
+import os
 
 # Set page config with dark theme
 st.set_page_config(
@@ -14,15 +11,21 @@ st.set_page_config(
     menu_items=None
 )
 
-# Health check endpoint
-def health_check():
+# Initialize session state
+if 'initialized' not in st.session_state:
+    st.session_state.initialized = True
+    st.session_state.health_status = 'healthy'
+
+# Health check middleware
+def check_health():
     try:
-        # Update health status in session state
-        st.session_state.health_check_status = 'healthy'
-        return {"status": "healthy"}
+        # Basic health check - verify session state
+        if not st.session_state.initialized:
+            raise Exception("Session not initialized")
+        return True
     except Exception as e:
-        st.session_state.health_check_status = 'unhealthy'
-        return {"status": "unhealthy", "error": str(e)}
+        st.session_state.health_status = 'unhealthy'
+        return False
 
 # Apply dark theme
 st.markdown("""
@@ -45,6 +48,13 @@ st.markdown("""
 # Main navigation
 st.sidebar.title("Data Fusion Catalog")
 
+# System status indicator
+system_status = st.sidebar.empty()
+if check_health():
+    system_status.success("System Status: Healthy")
+else:
+    system_status.error("System Status: Unhealthy")
+
 # Main Functions
 main_page = st.sidebar.selectbox(
     "Select Function",
@@ -59,16 +69,6 @@ main_page = st.sidebar.selectbox(
     ],
     index=0  # Set Import/Export as default
 )
-
-# Run health check
-health_status = health_check()
-
-# Display health status in sidebar
-st.sidebar.markdown("---")
-if st.session_state.health_check_status == 'healthy':
-    st.sidebar.success("System Status: Healthy")
-else:
-    st.sidebar.error("System Status: Unhealthy")
 
 # Render selected page
 if main_page == "Import/Export":

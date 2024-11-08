@@ -1,18 +1,20 @@
 [server]
-port = 8501
-address = "0.0.0.0"
-headless = true
-enableCORS = true
+enableCORS = false
 enableXsrfProtection = false
+maxUploadSize = 200
+enableWebsocketCompression = false
+maxMessageSize = 200
+
+[theme]
+primaryColor = "#3498db"
+backgroundColor = "#0f1419"
+secondaryBackgroundColor = "#1a1f24"
+textColor = "#fafafa"
 
 [browser]
 serverAddress = "0.0.0.0"
-serverPort = 8501
 gatherUsageStats = false
 
-[theme]
-primaryColor = "#FF4B4B"
-backgroundColor = "#FFFFFF"
-secondaryBackgroundColor = "#F0F2F6"
-textColor = "#262730"
-font = "sans serif"
+[runner]
+fastReruns = true
+magicEnabled = true
