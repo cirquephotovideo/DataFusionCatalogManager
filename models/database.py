@@ -96,6 +96,35 @@ class Payment(Base):
     user = relationship("User", back_populates="payments")
     subscription = relationship("Subscription", back_populates="payments")
 
+class Supplier(Base):
+    __tablename__ = "suppliers"
+
+    id = Column(Integer, primary_key=True, index=True)
+    supplier_name = Column(String, index=True)
+    contact_info = Column(JSON)
+    default_currency = Column(String, default='USD')
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    products = relationship("SupplierProduct", back_populates="supplier")
+
+class SupplierProduct(Base):
+    __tablename__ = "supplier_products"
+
+    id = Column(Integer, primary_key=True, index=True)
+    supplier_id = Column(Integer, ForeignKey("suppliers.id"))
+    product_id = Column(Integer, ForeignKey("catalogs.id"))
+    supplier_sku = Column(String)
+    price = Column(Float)
+    currency = Column(String)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    supplier = relationship("Supplier", back_populates="products")
+    product = relationship("Catalog")
+
 class AIConfig(Base):
     __tablename__ = "ai_configs"
 

@@ -1,5 +1,6 @@
 import streamlit as st
 from data_import_options import render_data_import_dashboard
+from components.supplier_management import render_supplier_management
 
 # Set page config with dark theme
 st.set_page_config(
@@ -44,6 +45,7 @@ main_page = st.sidebar.selectbox(
         "Price Management",
         "Stock Management",
         "Order Management",
+        "Supplier Management",
         "Reports & Analytics"
     ],
     index=0  # Set Import/Export as default
@@ -109,6 +111,9 @@ elif main_page == "Stock Management":
 elif main_page == "Order Management":
     st.title("Order Management")
     st.info("Order management coming soon...")
+
+elif main_page == "Supplier Management":
+    render_supplier_management()
 
 elif main_page == "Reports & Analytics":
     st.title("Reports & Analytics")
