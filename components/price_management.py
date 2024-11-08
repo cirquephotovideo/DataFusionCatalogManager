@@ -5,22 +5,46 @@ from datetime import datetime
 import json
 import asyncio
 
-def render_price_scraping():
-    """Render price scraping interface with web scraper integration"""
-    st.title("Price Scraping")
+class PriceManagement:
+    def __init__(self):
+        # Initialize web scraper if not exists
+        if 'web_scraper' not in st.session_state:
+            st.session_state.web_scraper = WebScraper()
 
-    # Initialize web scraper if not exists
-    if 'web_scraper' not in st.session_state:
-        st.session_state.web_scraper = WebScraper()
+        # Initialize saved rules if not exists
+        if 'saved_scraping_rules' not in st.session_state:
+            st.session_state.saved_scraping_rules = {}
 
-    # Initialize saved rules if not exists
-    if 'saved_scraping_rules' not in st.session_state:
-        st.session_state.saved_scraping_rules = {}
+    def render(self):
+        """Main render method that creates tabs and manages the interface"""
+        tab1, tab2, tab3 = st.tabs(["Price Scraping", "Price Matching", "Competitor Analysis"])
 
-    # Tabs for different scraping methods
-    tab1, tab2, tab3 = st.tabs(["Quick Scrape", "Advanced Scraping", "Saved Rules"])
+        with tab1:
+            self.render_price_scraping()
+        
+        with tab2:
+            self.render_price_matching()
+        
+        with tab3:
+            self.render_competitor_analysis()
 
-    with tab1:
+    def render_price_scraping(self):
+        """Render price scraping interface with web scraper integration"""
+        st.title("Price Scraping")
+
+        # Tabs for different scraping methods
+        tab1, tab2, tab3 = st.tabs(["Quick Scrape", "Advanced Scraping", "Saved Rules"])
+
+        with tab1:
+            self._render_quick_scrape_tab()
+
+        with tab2:
+            self._render_advanced_scrape_tab()
+
+        with tab3:
+            self._render_saved_rules_tab()
+
+    def _render_quick_scrape_tab(self):
         st.subheader("Quick Price Scraping")
         
         # URL input
@@ -81,7 +105,7 @@ def render_price_scraping():
                                 st.session_state.saved_scraping_rules[url] = rules
                                 st.success("Rules saved successfully!")
 
-    with tab2:
+    def _render_advanced_scrape_tab(self):
         st.subheader("Advanced Price Scraping")
         
         # Model selection
@@ -141,6 +165,9 @@ def render_price_scraping():
         with col3:
             start_button = st.button("3. Start Scraping", key="advanced_start", type="primary", use_container_width=True)
 
+        self._handle_advanced_scraping_actions(url, analyze_button, generate_button, start_button, model_provider, model_name, max_pages)
+
+    def _handle_advanced_scraping_actions(self, url, analyze_button, generate_button, start_button, model_provider, model_name, max_pages):
         # Analyze URL
         if url and analyze_button:
             with st.spinner("Analyzing URL..."):
@@ -220,7 +247,7 @@ def render_price_scraping():
                         key='download-advanced-csv'
                     )
 
-    with tab3:
+    def _render_saved_rules_tab(self):
         st.subheader("Saved Scraping Rules")
         if st.session_state.saved_scraping_rules:
             for saved_url, rules in st.session_state.saved_scraping_rules.items():
@@ -238,35 +265,35 @@ def render_price_scraping():
         else:
             st.info("No saved rules yet. Save rules from Quick Scrape or Advanced Scraping to see them here.")
 
-def render_price_matching():
-    """Render price matching interface"""
-    st.title("Price Matching")
-    
-    # Show latest scraping results if available
-    if 'latest_price_scraping' in st.session_state:
-        st.subheader("Latest Scraped Data")
-        scraping = st.session_state.latest_price_scraping
-        st.write(f"Source: {scraping['url']}")
-        st.write(f"Scraped at: {scraping['timestamp']}")
+    def render_price_matching(self):
+        """Render price matching interface"""
+        st.title("Price Matching")
         
-        df = pd.DataFrame(scraping['results'])
-        st.dataframe(df)
-        
-        # Match prices with catalog
-        if st.button("Match Prices with Catalog"):
-            with st.spinner("Matching prices..."):
-                # TODO: Implement price matching logic
-                st.info("Price matching functionality coming soon!")
+        # Show latest scraping results if available
+        if 'latest_price_scraping' in st.session_state:
+            st.subheader("Latest Scraped Data")
+            scraping = st.session_state.latest_price_scraping
+            st.write(f"Source: {scraping['url']}")
+            st.write(f"Scraped at: {scraping['timestamp']}")
+            
+            df = pd.DataFrame(scraping['results'])
+            st.dataframe(df)
+            
+            # Match prices with catalog
+            if st.button("Match Prices with Catalog"):
+                with st.spinner("Matching prices..."):
+                    # TODO: Implement price matching logic
+                    st.info("Price matching functionality coming soon!")
 
-def render_competitor_analysis():
-    """Render competitor analysis interface"""
-    st.title("Competitor Analysis")
-    
-    # Show saved scraping data
-    if 'saved_scraping_rules' in st.session_state:
-        st.subheader("Saved Competitor URLs")
-        for url in st.session_state.saved_scraping_rules.keys():
-            st.write(url)
-            if st.button("Analyze", key=f"analyze_{url}"):
-                # TODO: Implement competitor analysis logic
-                st.info("Competitor analysis functionality coming soon!")
+    def render_competitor_analysis(self):
+        """Render competitor analysis interface"""
+        st.title("Competitor Analysis")
+        
+        # Show saved scraping data
+        if 'saved_scraping_rules' in st.session_state:
+            st.subheader("Saved Competitor URLs")
+            for url in st.session_state.saved_scraping_rules.keys():
+                st.write(url)
+                if st.button("Analyze", key=f"analyze_{url}"):
+                    # TODO: Implement competitor analysis logic
+                    st.info("Competitor analysis functionality coming soon!")

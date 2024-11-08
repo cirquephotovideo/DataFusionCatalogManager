@@ -7,19 +7,36 @@ from services.catalog_service import CatalogService
 from tenacity import retry, stop_after_attempt, wait_exponential
 from datetime import datetime
 
-def format_datetime(dt):
-    """Format datetime for display"""
-    if dt:
-        return dt.strftime("%Y-%m-%d %H:%M")
-    return "-"
+class CatalogManager:
+    def __init__(self, db):
+        self.db = db
+        if 'mappings' not in st.session_state:
+            st.session_state.mappings = {}
+        if 'import_df' not in st.session_state:
+            st.session_state.import_df = None
 
-def render_catalog_manager():
-    st.header("Catalog Management")
-    
-    # Add tabs for different sections
-    tab1, tab2, tab3 = st.tabs(["Search Products", "Add Product", "Import Products"])
-    
-    with tab1:
+    def format_datetime(self, dt):
+        """Format datetime for display"""
+        if dt:
+            return dt.strftime("%Y-%m-%d %H:%M")
+        return "-"
+
+    def render(self):
+        st.header("Catalog Management")
+        
+        # Add tabs for different sections
+        tab1, tab2, tab3 = st.tabs(["Search Products", "Add Product", "Import Products"])
+        
+        with tab1:
+            self.render_search_tab()
+        
+        with tab2:
+            self.render_add_product_tab()
+        
+        with tab3:
+            self.render_import_tab()
+
+    def render_search_tab(self):
         # Search section
         st.subheader("Product Search")
         search_col1, search_col2 = st.columns([3, 1])
@@ -53,11 +70,11 @@ def render_catalog_manager():
                         st.markdown("---")
                         info_col1, info_col2, info_col3 = st.columns(3)
                         with info_col1:
-                            st.write("**Created:**", format_datetime(product.created_at))
+                            st.write("**Created:**", self.format_datetime(product.created_at))
                         with info_col2:
-                            st.write("**Last Updated:**", format_datetime(product.updated_at))
+                            st.write("**Last Updated:**", self.format_datetime(product.updated_at))
                         with info_col3:
-                            st.write("**Last Import:**", format_datetime(product.last_import))
+                            st.write("**Last Import:**", self.format_datetime(product.last_import))
                             if product.import_source:
                                 st.write("**Source:**", product.import_source)
                         
@@ -75,8 +92,8 @@ def render_catalog_manager():
                             st.table(pd.DataFrame(price_data))
             else:
                 st.info("No products found matching your search criteria")
-    
-    with tab2:
+
+    def render_add_product_tab(self):
         # Manual product creation form
         st.subheader("Add New Product")
         with st.form("add_product_form"):
@@ -112,16 +129,10 @@ def render_catalog_manager():
                         st.success("Product added successfully!")
                     else:
                         st.error("Error adding product")
-    
-    with tab3:
+
+    def render_import_tab(self):
         # File Import Section
         st.subheader("Import Products from File")
-        
-        # Initialize mapping state
-        if 'mappings' not in st.session_state:
-            st.session_state.mappings = {}
-        if 'import_df' not in st.session_state:
-            st.session_state.import_df = None
         
         # Show example file formats
         example_format = st.radio("View Example Format", ["CSV", "Excel"])

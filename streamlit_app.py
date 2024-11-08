@@ -1,8 +1,7 @@
 import streamlit as st
 import os
 from dotenv import load_dotenv
-from models.database import SessionLocal, init_db
-from models.subscription_models import Subscription
+from models.database import SessionLocal, init_db, Subscription
 from components.subscription_manager import SubscriptionManager
 from components.catalog_manager import CatalogManager
 from components.product_enrichment import ProductEnrichment
