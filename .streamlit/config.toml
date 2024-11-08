@@ -18,3 +18,11 @@ gatherUsageStats = false
 [runner]
 fastReruns = true
 magicEnabled = true
+
+[client]
+showErrorDetails = true
+toolbarMode = "minimal"
+
+[logger]
+level = "info"
+messageFormat = "%(asctime)s %(message)s"
