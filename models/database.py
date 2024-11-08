@@ -25,6 +25,54 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 # Create base class for declarative models
 Base = declarative_base()
 
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String, unique=True, index=True)
+    username = Column(String, unique=True, index=True)
+    hashed_password = Column(String)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    subscriptions = relationship("Subscription", back_populates="user")
+    payments = relationship("Payment", back_populates="user")
+
+class Subscription(Base):
+    __tablename__ = "subscriptions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    plan_type = Column(String)
+    start_date = Column(DateTime, default=datetime.utcnow)
+    end_date = Column(DateTime)
+    status = Column(String)  # active, expired, cancelled
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    user = relationship("User", back_populates="subscriptions")
+    payments = relationship("Payment", back_populates="subscription")
+
+class Payment(Base):
+    __tablename__ = "payments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    subscription_id = Column(Integer, ForeignKey("subscriptions.id"))
+    amount = Column(Float)
+    currency = Column(String)
+    status = Column(String)  # success, pending, failed
+    payment_method = Column(String)
+    transaction_id = Column(String)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Relationships
+    user = relationship("User", back_populates="payments")
+    subscription = relationship("Subscription", back_populates="payments")
+
 class AIConfig(Base):
     __tablename__ = "ai_configs"
 
@@ -141,6 +189,3 @@ class ProductEnrichment(Base):
 def init_db():
     """Initialize the database tables"""
     Base.metadata.create_all(bind=engine)
-
-# Initialize database tables
-init_db()
