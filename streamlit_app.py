@@ -10,6 +10,14 @@ from components.price_management import PriceManagement
 # Load environment variables
 load_dotenv()
 
+# Configure Streamlit
+st.set_page_config(
+    page_title="Data Fusion Catalog Manager",
+    page_icon="🛍️",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
 # Health check endpoint
 def health_check():
     try:
@@ -19,14 +27,6 @@ def health_check():
         return {"status": "healthy"}
     except Exception as e:
         return {"status": "unhealthy", "error": str(e)}
-
-# Configure Streamlit
-st.set_page_config(
-    page_title="Data Fusion Catalog Manager",
-    page_icon="🛍️",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
 
 # Initialize database at startup
 @st.cache_resource
@@ -71,12 +71,6 @@ def main():
     try:
         # Initialize database
         if not initialize_database():
-            st.stop()
-
-        # Perform health check
-        health_status = health_check()
-        if health_status["status"] != "healthy":
-            st.error(f"Health check failed: {health_status.get('error', 'Unknown error')}")
             st.stop()
 
         st.title("Data Fusion Catalog Manager")
@@ -174,4 +168,10 @@ def main():
             st.session_state.db_session = None
 
 if __name__ == "__main__":
+    # Run health check at startup
+    health_status = health_check()
+    if health_status["status"] != "healthy":
+        st.error(f"Health check failed: {health_status.get('error', 'Unknown error')}")
+        st.stop()
+    
     main()
