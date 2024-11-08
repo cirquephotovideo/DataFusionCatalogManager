@@ -91,26 +91,6 @@ if main_page == "Dashboard":
         }).set_index("Category")
         st.bar_chart(distribution_data)
 
-elif main_page == "Import/Export":
-    st.title("Import/Export")
-    st.info("Import/Export functionality coming soon...")
-
-elif main_page == "Product Management":
-    st.title("Product Management")
-    st.info("Product management coming soon...")
-
-elif main_page == "Price Management":
-    st.title("Price Management")
-    st.info("Price management coming soon...")
-
-elif main_page == "Stock Management":
-    st.title("Stock Management")
-    st.info("Stock management coming soon...")
-
-elif main_page == "Order Management":
-    st.title("Order Management")
-    st.info("Order management coming soon...")
-
-elif main_page == "Reports & Analytics":
-    st.title("Reports & Analytics")
-    st.info("Reports & analytics coming soon...")
+else:
+    st.title(main_page)
+    st.info(f"{main_page} functionality coming soon...")
