@@ -11,6 +11,10 @@ from components.price_management import PriceManagement
 # Load environment variables
 load_dotenv()
 
+# Health check endpoint
+def health_check():
+    return {"status": "healthy"}
+
 # Configure Streamlit
 st.set_page_config(
     page_title="Data Fusion Catalog Manager",
@@ -19,19 +23,26 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# Add health check endpoint
+if st._is_running_with_streamlit:
+    health_check()
+
 # Initialize database at startup
-try:
-    init_db()
-    st.success("Database initialized successfully")
-except Exception as e:
-    st.error(f"Database initialization error: {str(e)}")
-    st.stop()
+@st.cache_resource
+def initialize_database():
+    try:
+        init_db()
+        return True
+    except Exception as e:
+        st.error(f"Database initialization error: {str(e)}")
+        return False
 
 # Initialize session state
 if 'authenticated' not in st.session_state:
     st.session_state.authenticated = False
     st.session_state.db_session = None
 
+@st.cache_resource
 def get_db():
     """Get database session"""
     if not st.session_state.db_session:
@@ -39,9 +50,10 @@ def get_db():
             st.session_state.db_session = SessionLocal()
         except Exception as e:
             st.error(f"Database connection error: {str(e)}")
-            st.stop()
+            return None
     return st.session_state.db_session
 
+@st.cache_resource
 def init_components(db):
     """Initialize application components with error handling"""
     try:
@@ -56,17 +68,21 @@ def init_components(db):
 
 def main():
     try:
+        # Initialize database
+        if not initialize_database():
+            st.stop()
+
         st.title("Data Fusion Catalog Manager")
         
         # Get database session
         db = get_db()
         if not db:
-            return
+            st.stop()
         
         # Initialize components
         components = init_components(db)
         if not all(components):
-            return
+            st.stop()
             
         subscription_manager, catalog_manager, product_enrichment, price_management = components
         

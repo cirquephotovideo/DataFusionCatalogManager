@@ -1,18 +1,18 @@
 [server]
-port = 8533
+port = 8501
+address = "0.0.0.0"
+headless = true
 enableCORS = true
-enableXsrfProtection = true
-maxUploadSize = 200
-maxMessageSize = 200
-address = "localhost"
+enableXsrfProtection = false
+
+[browser]
+serverAddress = "0.0.0.0"
+serverPort = 8501
+gatherUsageStats = false
 
 [theme]
-primaryColor = "#007AFF"
+primaryColor = "#FF4B4B"
 backgroundColor = "#FFFFFF"
 secondaryBackgroundColor = "#F0F2F6"
 textColor = "#262730"
 font = "sans serif"
-
-[browser]
-serverAddress = "localhost"
-gatherUsageStats = false
