@@ -1,0 +1,31 @@
+[browser]
+serverAddress = "0.0.0.0"
+serverPort = 8501
+gatherUsageStats = false
+
+[server]
+address = "0.0.0.0"
+port = 8501
+baseUrlPath = ""
+maxUploadSize = 200
+enableCORS = false
+enableXsrfProtection = false
+
+[theme]
+base = "dark"
+primaryColor = "#3498db"
+backgroundColor = "#0f1419"
+secondaryBackgroundColor = "#1a1f24"
+textColor = "#fafafa"
+
+[runner]
+fastReruns = true
+magicEnabled = true
+
+[client]
+showErrorDetails = true
+toolbarMode = "minimal"
+
+[logger]
+level = "info"
+messageFormat = "%(asctime)s %(message)s"
